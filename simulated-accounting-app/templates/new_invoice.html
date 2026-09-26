@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2 style="margin-bottom: 1.5rem;">Create New Invoice</h2>
+    
+    <form method="POST" action="/new-invoice">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="vendor">Vendor *</label>
+                <input type="text" id="vendor" name="vendor" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="invoice_number">Invoice Number *</label>
+                <input type="text" id="invoice_number" name="invoice_number" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="invoice_date">Invoice Date *</label>
+                <input type="date" id="invoice_date" name="invoice_date" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="due_date">Due Date</label>
+                <input type="date" id="due_date" name="due_date">
+            </div>
+            
+            <div class="form-group">
+                <label for="currency">Currency *</label>
+                <select id="currency" name="currency" required>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="GBP">GBP</option>
+                    <option value="CAD">CAD</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="subtotal">Subtotal</label>
+                <input type="number" step="0.01" id="subtotal" name="subtotal">
+            </div>
+            
+            <div class="form-group">
+                <label for="tax">Tax</label>
+                <input type="number" step="0.01" id="tax" name="tax">
+            </div>
+            
+            <div class="form-group">
+                <label for="total">Total *</label>
+                <input type="number" step="0.01" id="total" name="total" required>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="line_items">Line Items (Description)</label>
+            <textarea id="line_items" name="line_items" placeholder="Enter line items description..."></textarea>
+        </div>
+        
+        <div style="margin-top: 1.5rem;">
+            <button type="submit" class="btn btn-primary">Save Invoice</button>
+            <a href="/" class="btn btn-secondary" style="margin-left: 0.5rem;">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

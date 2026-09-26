@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h2>Accounting Record Details</h2>
+        <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+    
+    <div style="background-color: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+        <strong style="color: #1e40af;">Accounting Record ID:</strong>
+        <span style="font-size: 1.25rem; font-weight: bold; color: #1e40af; margin-left: 0.5rem;">{{ record.accounting_id }}</span>
+    </div>
+    
+    <table>
+        <tr>
+            <td style="width: 200px;"><strong>Vendor:</strong></td>
+            <td>{{ record.vendor }}</td>
+        </tr>
+        <tr>
+            <td><strong>Invoice Number:</strong></td>
+            <td>{{ record.invoice_number }}</td>
+        </tr>
+        <tr>
+            <td><strong>Invoice Date:</strong></td>
+            <td>{{ record.invoice_date }}</td>
+        </tr>
+        <tr>
+            <td><strong>Due Date:</strong></td>
+            <td>{{ record.due_date or '-' }}</td>
+        </tr>
+        <tr>
+            <td><strong>Currency:</strong></td>
+            <td>{{ record.currency }}</td>
+        </tr>
+        <tr>
+            <td><strong>Subtotal:</strong></td>
+            <td>{{ "%.2f"|format(record.subtotal) if record.subtotal else '-' }}</td>
+        </tr>
+        <tr>
+            <td><strong>Tax:</strong></td>
+            <td>{{ "%.2f"|format(record.tax) if record.tax else '-' }}</td>
+        </tr>
+        <tr>
+            <td><strong>Total:</strong></td>
+            <td style="font-size: 1.1rem; font-weight: bold; color: #059669;">{{ "%.2f"|format(record.total) if record.total else '-' }}</td>
+        </tr>
+        <tr>
+            <td><strong>Line Items:</strong></td>
+            <td>{{ record.line_items or '-' }}</td>
+        </tr>
+        <tr>
+            <td><strong>Created At:</strong></td>
+            <td>{{ record.created_at[:19] if record.created_at else '-' }}</td>
+        </tr>
+    </table>
+</div>
+{% endblock %}

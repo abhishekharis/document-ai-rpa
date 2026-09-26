@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="success-message">
+    <h2>✓ Invoice Successfully Created</h2>
+    <p>The invoice has been saved to the accounting system.</p>
+    <div class="accounting-id">
+        Accounting Record ID: {{ accounting_id }}
+    </div>
+    <p style="margin-top: 1rem; color: #6b7280;">
+        This ID can be used to track the invoice in the system.
+    </p>
+    <div style="margin-top: 2rem;">
+        <a href="/" class="btn btn-primary">Return to Dashboard</a>
+        <a href="/record/{{ accounting_id }}" class="btn btn-secondary" style="margin-left: 0.5rem;">View Record</a>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 2rem;">
+    <h3>Invoice Details</h3>
+    <table style="margin-top: 1rem;">
+        <tr>
+            <td><strong>Vendor:</strong></td>
+            <td>{{ record.vendor }}</td>
+        </tr>
+        <tr>
+            <td><strong>Invoice Number:</strong></td>
+            <td>{{ record.invoice_number }}</td>
+        </tr>
+        <tr>
+            <td><strong>Invoice Date:</strong></td>
+            <td>{{ record.invoice_date }}</td>
+        </tr>
+        <tr>
+            <td><strong>Due Date:</strong></td>
+            <td>{{ record.due_date or '-' }}</td>
+        </tr>
+        <tr>
+            <td><strong>Currency:</strong></td>
+            <td>{{ record.currency }}</td>
+        </tr>
+        <tr>
+            <td><strong>Subtotal:</strong></td>
+            <td>{{ "%.2f"|format(record.subtotal) if record.subtotal else '-' }}</td>
+        </tr>
+        <tr>
+            <td><strong>Tax:</strong></td>
+            <td>{{ "%.2f"|format(record.tax) if record.tax else '-' }}</td>
+        </tr>
+        <tr>
+            <td><strong>Total:</strong></td>
+            <td><strong>{{ "%.2f"|format(record.total) if record.total else '-' }}</strong></td>
+        </tr>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>Accounting Records</h2>
+        <a href="/new-invoice" class="btn btn-primary">Create New Invoice</a>
+    </div>
+    
+    {% if records %}
+    <table>
+        <thead>
+            <tr>
+                <th>Accounting ID</th>
+                <th>Vendor</th>
+                <th>Invoice Number</th>
+                <th>Invoice Date</th>
+                <th>Total</th>
+                <th>Currency</th>
+                <th>Created At</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for record in records %}
+            <tr>
+                <td><strong>{{ record.accounting_id }}</strong></td>
+                <td>{{ record.vendor }}</td>
+                <td>{{ record.invoice_number }}</td>
+                <td>{{ record.invoice_date }}</td>
+                <td>{{ "%.2f"|format(record.total) if record.total else '-' }}</td>
+                <td>{{ record.currency }}</td>
+                <td>{{ record.created_at[:19] if record.created_at else '-' }}</td>
+                <td>
+                    <a href="/record/{{ record.accounting_id }}" class="btn btn-secondary">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="text-align: center; color: #6b7280; padding: 2rem;">No accounting records found. Create your first invoice to get started.</p>
+    {% endif %}
+</div>
+{% endblock %}
