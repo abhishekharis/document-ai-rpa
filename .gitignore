@@ -54,3 +54,4 @@ sample_documents/*/*.jpeg
 
 # MongoDB data
 mongodb_data/
+CODEBASE_KNOWLEDGE_TRANSFER.md
