@@ -171,6 +171,35 @@ async def upload_invoice(
             message=f"Document processed successfully - status: {final_status.value}"
         ))
         
+        # If processing succeeded and document is PROCESSED, automatically approve and queue for RPA
+        if final_status == InvoiceStatus.PROCESSED:
+            # Transition to APPROVED
+            await repo.update_status(document_id, InvoiceStatus.APPROVED, InvoiceStatus.PROCESSED)
+            await repo.create_audit_log(AuditLog(
+                document_id=document_id,
+                event="AUTO_APPROVED",
+                message="Document automatically approved after successful processing"
+            ))
+            
+            # Transition to RPA_QUEUED
+            await repo.update_status(document_id, InvoiceStatus.RPA_QUEUED, InvoiceStatus.APPROVED)
+            await repo.create_audit_log(AuditLog(
+                document_id=document_id,
+                event="RPA_QUEUED",
+                message="Document queued for RPA processing"
+            ))
+            
+            # Update RPA status
+            from datetime import datetime
+            await repo.update_rpa_status(document_id, {
+                "eligible": True,
+                "status": "QUEUED",
+                "message": "Awaiting RPA processing",
+                "queued_at": datetime.utcnow().isoformat()
+            })
+            
+            return UploadResponse(document_id=document_id, status=InvoiceStatus.RPA_QUEUED.value)
+        
         return UploadResponse(document_id=document_id, status=final_status.value)
         
     except Exception as e:

@@ -86,7 +86,7 @@ class TestValidationService:
     def test_determine_status_approved(self):
         validation = {'is_valid': True, 'errors': [], 'warnings': []}
         status = self.validation_service.determine_status(validation, 0.95)
-        assert status == 'APPROVED'
+        assert status == 'PROCESSED'
     
     def test_determine_status_needs_review_low_confidence(self):
         validation = {'is_valid': True, 'errors': [], 'warnings': []}

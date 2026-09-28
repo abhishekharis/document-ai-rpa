@@ -20,11 +20,14 @@ class OCRService:
         """Lazy initialization of PaddleOCR."""
         if self.paddle_ocr is None:
             logger.info("Initializing PaddleOCR")
-            self.paddle_ocr = PaddleOCR(
-                use_angle_cls=self.use_angle_cls,
-                lang=self.lang,
-                show_log=False
-            )
+            try:
+                self.paddle_ocr = PaddleOCR(
+                    use_angle_cls=self.use_angle_cls,
+                    lang=self.lang
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize PaddleOCR: {str(e)}")
+                raise
         return self.paddle_ocr
     
     def extract_text(self, image: Image.Image) -> Dict[str, Any]:
@@ -49,7 +52,7 @@ class OCRService:
             cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
             
             # Run OCR
-            results = ocr.ocr(cv_image, cls=True)
+            results = ocr.ocr(cv_image)
             
             if not results or not results[0]:
                 logger.warning("PaddleOCR returned empty results")
@@ -61,23 +64,20 @@ class OCRService:
                     'engine': 'paddle'
                 }
             
-            # Extract text and confidence
-            text_parts = []
-            confidences = []
-            raw_results = []
+            # Extract text and confidence from new PaddleOCR format
+            result = results[0]
+            text_parts = result.get('rec_texts', [])
+            confidences = result.get('rec_scores', [])
+            boxes = result.get('rec_boxes', [])
             
-            for line in results[0]:
-                # line format: [bbox, (text, confidence)]
-                bbox = line[0]
-                text_info = line[1]
-                text = text_info[0]
-                confidence = float(text_info[1])
+            raw_results = []
+            for i, text in enumerate(text_parts):
+                confidence = confidences[i] if i < len(confidences) else 0.0
+                bbox = boxes[i].tolist() if i < len(boxes) else []
                 
-                text_parts.append(text)
-                confidences.append(confidence)
                 raw_results.append({
                     'text': text,
-                    'confidence': confidence,
+                    'confidence': float(confidence),
                     'bbox': bbox
                 })
             

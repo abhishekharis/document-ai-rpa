@@ -104,7 +104,7 @@ class ValidationService:
             overall_confidence: Overall extraction confidence
             
         Returns:
-            Status string: 'APPROVED', 'NEEDS_REVIEW', or 'REJECTED'
+            Status string: 'PROCESSED', 'NEEDS_REVIEW', or 'REJECTED'
         """
         if not validation_result['is_valid']:
             return 'REJECTED'
@@ -115,4 +115,4 @@ class ValidationService:
         if validation_result['warnings']:
             return 'NEEDS_REVIEW'
         
-        return 'APPROVED'
+        return 'PROCESSED'
