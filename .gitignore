@@ -29,6 +29,9 @@ ENV/
 # Storage
 storage/documents/*
 !storage/documents/.gitkeep
+backend/app/storage/documents/*
+!backend/app/storage/documents/.gitkeep
+backend/storage/
 
 # IDE
 .vscode/
