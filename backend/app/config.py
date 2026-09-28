@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings
 from typing import List
+import os
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -8,7 +10,7 @@ class Settings(BaseSettings):
     mongodb_database: str = "document_ai_rpa"
     
     # Storage
-    storage_path: str = "./storage"
+    storage_path: str = str(Path(__file__).parent / "storage")
     max_upload_size_mb: int = 10
     
     # Processing
@@ -26,8 +28,14 @@ class Settings(BaseSettings):
     cors_origins: List[str] = ["http://localhost:3000", "http://localhost:5173"]
     
     class Config:
-        env_file = ".env"
+        # Try to load .env from parent directory first, then current directory
+        env_file = [
+            str(Path(__file__).parent.parent / ".env"),  # Project root .env
+            ".env"  # Current directory .env
+        ]
+        env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"
 
 
 settings = Settings()
