@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { ExternalLink, FileText, AlertCircle, AlertTriangle, Save, Check, X } from 'lucide-react';
 import { invoiceAPI } from '../services/api';
+import PageHeader from '../components/ui/PageHeader';
+import LoadingState from '../components/ui/LoadingState';
+import Alert from '../components/ui/Alert';
 
 function Review() {
   const { documentId } = useParams();
@@ -127,111 +131,86 @@ function Review() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex items-center space-x-2">
-          <div className="w-4 h-4 bg-primary-600 rounded-full animate-bounce"></div>
-          <div className="w-4 h-4 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-          <div className="w-4 h-4 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-        </div>
-      </div>
-    );
+    return <LoadingState label="Loading invoice..." />;
   }
 
   if (error && !invoice) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-xl p-6">
-        <div className="flex items-center">
-          <span className="text-red-600 mr-3 text-2xl">⚠️</span>
-          <div>
-            <p className="text-red-700 font-medium">{error}</p>
-            <Link to="/" className="text-primary-600 hover:text-primary-800 mt-2 inline-block text-sm">
-              Return to Dashboard
-            </Link>
-          </div>
-        </div>
-      </div>
+      <Alert type="error" title={error}>
+        <Link to="/" className="link mt-1 inline-block">
+          Return to Dashboard
+        </Link>
+      </Alert>
     );
   }
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-8">
-        <Link to={`/invoice/${documentId}`} className="text-primary-600 hover:text-primary-800 text-sm font-medium mb-2 inline-block">
-          ← Back to Details
-        </Link>
-        <h1 className="text-3xl font-semibold text-gray-900 mb-2">Review Invoice</h1>
-        <p className="text-gray-600">Review and correct extracted data before approval.</p>
-      </div>
+      <PageHeader
+        backTo={`/invoice/${documentId}`}
+        backLabel="Back to Details"
+        title="Review Invoice"
+        description="Review and correct extracted data before approval."
+      />
 
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <div className="flex items-center">
-            <span className="text-red-600 mr-2">⚠️</span>
-            <p className="text-sm text-red-700">{error}</p>
-          </div>
-        </div>
-      )}
+      {error && <Alert type="error" className="mb-6">{error}</Alert>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Edit Form */}
         <div className="lg:col-span-2">
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-6">Edit Invoice Fields</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Vendor Name</label>
+          <div className="card">
+            <div className="card-header">
+              <h3 className="card-title">Edit Invoice Fields</h3>
+            </div>
+            <div className="p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="sm:col-span-2">
+                <label className="label">Vendor Name</label>
                 <input
                   type="text"
                   name="vendor_name"
                   value={formData.vendor_name}
                   onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input"
                 />
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Number</label>
+                <label className="label">Invoice Number</label>
                 <input
                   type="text"
                   name="invoice_number"
                   value={formData.invoice_number}
                   onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input"
                 />
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Date</label>
+                <label className="label">Invoice Date</label>
                 <input
                   type="date"
                   name="invoice_date"
                   value={formData.invoice_date}
                   onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input"
                 />
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+                <label className="label">Due Date</label>
                 <input
                   type="date"
                   name="due_date"
                   value={formData.due_date}
                   onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input"
                 />
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                <label className="label">Currency</label>
                 <select
                   name="currency"
                   value={formData.currency}
                   onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input"
                 >
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
@@ -239,88 +218,94 @@ function Review() {
                   <option value="CAD">CAD</option>
                 </select>
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Subtotal</label>
+                <label className="label">Subtotal</label>
                 <input
                   type="number"
                   step="0.01"
                   name="subtotal"
                   value={formData.subtotal}
                   onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input tabular-nums"
                 />
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Tax</label>
+                <label className="label">Tax</label>
                 <input
                   type="number"
                   step="0.01"
                   name="tax"
                   value={formData.tax}
                   onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input tabular-nums"
                 />
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Total</label>
+                <label className="label">Total</label>
                 <input
                   type="number"
                   step="0.01"
                   name="total"
                   value={formData.total}
                   onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input tabular-nums"
                 />
               </div>
             </div>
 
-            <button
-              onClick={handleSave}
-              disabled={submitting}
-              className="mt-6 w-full bg-gray-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-            >
-              {submitting ? 'Saving...' : 'Save Corrections'}
-            </button>
+            <div className="mt-6 flex justify-end border-t border-slate-100 pt-5">
+              <button
+                onClick={handleSave}
+                disabled={submitting}
+                className="btn-secondary w-full sm:w-auto"
+              >
+                <Save className="h-4 w-4" />
+                {submitting ? 'Saving...' : 'Save Corrections'}
+              </button>
+            </div>
+            </div>
           </div>
         </div>
 
         {/* Review Actions */}
         <div className="space-y-6">
           {/* Original Document Preview */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Original Document</h3>
-            <p className="text-sm text-gray-600 mb-3">{invoice?.original_filename}</p>
+          <div className="card p-6">
+            <h3 className="card-title mb-4">Original Document</h3>
+            <div className="flex items-center gap-3 rounded-lg bg-slate-50 p-3 ring-1 ring-inset ring-slate-200">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-slate-200">
+                <FileText className="h-4 w-4 text-slate-500" />
+              </div>
+              <p className="min-w-0 truncate text-sm font-medium text-slate-700">{invoice?.original_filename}</p>
+            </div>
             <a
               href={`/api/invoices/${documentId}/document`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center text-primary-600 hover:text-primary-800 text-sm font-medium"
+              className="link mt-3 inline-flex items-center gap-1.5 text-sm"
             >
-              <span className="mr-2">📄</span>
               Open original document
+              <ExternalLink className="h-4 w-4" />
             </a>
           </div>
 
           {/* Confidence Display */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Extraction Confidence</h3>
+          <div className="card p-6">
+            <h3 className="card-title mb-4">Extraction Confidence</h3>
             <div className="mb-4">
-              <label className="text-sm font-medium text-gray-500 block mb-2">Overall Confidence</label>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="field-label mb-1">Overall Confidence</p>
+              <p className="text-3xl font-semibold tracking-tight text-slate-900 tabular-nums">
                 {(invoice?.extraction?.overall_confidence || 0).toFixed(2)}
               </p>
             </div>
             
             {invoice?.validation?.errors && invoice.validation.errors.length > 0 && (
               <div className="mb-4">
-                <label className="text-sm font-medium text-gray-500 block mb-2">Validation Errors</label>
+                <p className="field-label mb-2">Validation Errors</p>
                 <ul className="space-y-2">
                   {invoice.validation.errors.map((error, idx) => (
-                    <li key={idx} className="text-sm text-red-600 flex items-start">
-                      <span className="mr-2">•</span>
+                    <li key={idx} className="flex items-start gap-2 text-sm text-red-700">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
                       <span>{error}</span>
                     </li>
                   ))}
@@ -330,11 +315,11 @@ function Review() {
             
             {invoice?.validation?.warnings && invoice.validation.warnings.length > 0 && (
               <div>
-                <label className="text-sm font-medium text-gray-500 block mb-2">Validation Warnings</label>
+                <p className="field-label mb-2">Validation Warnings</p>
                 <ul className="space-y-2">
                   {invoice.validation.warnings.map((warning, idx) => (
-                    <li key={idx} className="text-sm text-amber-600 flex items-start">
-                      <span className="mr-2">•</span>
+                    <li key={idx} className="flex items-start gap-2 text-sm text-amber-700">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
                       <span>{warning}</span>
                     </li>
                   ))}
@@ -344,58 +329,60 @@ function Review() {
           </div>
 
           {/* Approval/Rejection */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Review Decision</h3>
+          <div className="card p-6">
+            <h3 className="card-title mb-4">Review Decision</h3>
             
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Reviewed By</label>
+                <label className="label">Reviewed By</label>
                 <input
                   type="text"
                   value={reviewedBy}
                   onChange={(e) => setReviewedBy(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input"
                   placeholder="Your name"
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
+                <label className="label">Notes <span className="font-normal text-slate-400">(Optional)</span></label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input"
                   rows="2"
                   placeholder="Any additional notes..."
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Rejection Reason (if rejecting)</label>
+                <label className="label">Rejection Reason <span className="font-normal text-slate-400">(if rejecting)</span></label>
                 <textarea
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="input"
                   rows="2"
                   placeholder="Reason for rejection..."
                 />
               </div>
             </div>
 
-            <div className="mt-6 space-y-3">
+            <div className="mt-6 grid grid-cols-1 gap-3">
               <button
                 onClick={handleApprove}
                 disabled={submitting}
-                className="w-full bg-green-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                className="btn-success py-2.5"
               >
+                <Check className="h-4 w-4" />
                 {submitting ? 'Processing...' : 'Approve Invoice'}
               </button>
               
               <button
                 onClick={handleReject}
                 disabled={submitting}
-                className="w-full bg-red-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                className="btn bg-white text-red-600 border border-red-200 hover:bg-red-50 py-2.5"
               >
+                <X className="h-4 w-4" />
                 {submitting ? 'Processing...' : 'Reject Invoice'}
               </button>
             </div>

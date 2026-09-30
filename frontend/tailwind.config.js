@@ -6,6 +6,8 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  // Confidence bars derive bg-* from getConfidenceColor's text-* classes at runtime
+  safelist: ['bg-green-600', 'bg-amber-600', 'bg-red-600'],
   theme: {
     extend: {
       colors: {
