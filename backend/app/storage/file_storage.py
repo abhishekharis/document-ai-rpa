@@ -4,10 +4,14 @@ from pathlib import Path
 from typing import Optional
 from app.config import settings
 
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+
 
 class FileStorage:
     def __init__(self):
-        self.storage_path = Path(settings.storage_path)
+        storage_path = Path(settings.storage_path)
+        # Relative paths resolve against backend/ so the start directory doesn't matter
+        self.storage_path = storage_path if storage_path.is_absolute() else BACKEND_DIR / storage_path
         self.documents_path = self.storage_path / "documents"
         self._ensure_directories()
     

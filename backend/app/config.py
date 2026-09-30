@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     mongodb_database: str = "document_ai_rpa"
     
     # Storage
-    storage_path: str = str(Path(__file__).parent / "storage")
+    storage_path: str = "./storage"
     max_upload_size_mb: int = 10
     
     # Processing

@@ -27,11 +27,11 @@ ENV/
 .env
 
 # Storage
-storage/documents/*
-!storage/documents/.gitkeep
-backend/app/storage/documents/*
-!backend/app/storage/documents/.gitkeep
-backend/storage/
+/storage/
+backend/storage/*
+!backend/storage/documents/
+backend/storage/documents/*
+!backend/storage/documents/.gitkeep
 
 # IDE
 .vscode/
