@@ -9,7 +9,8 @@ This system demonstrates the integration of **Document AI/OCR** with **RPA autom
 - **Document processing** extracts structured invoice fields with confidence scores
 - **Validation** checks data integrity and routes invoices based on confidence
 - **Human review** interface allows correction of low-confidence extractions
-- **UiPath RPA** automatically enters approved invoices into the accounting system
+- **Documents page** provides bulk management (select, search, filter, delete, reprocess)
+- **UiPath RPA** (or included Python processor) automatically enters approved invoices into the accounting system
 - **Simulated accounting application** provides a real target for RPA automation
 
 ## Architecture
@@ -229,11 +230,19 @@ Accounting app will be available at `http://localhost:3001`
 4. Enter your name and any notes
 5. Click "Approve Invoice" or "Reject Invoice"
 
-### 4. RPA Processing
+### 4. Manage Documents
+
+1. Navigate to "Documents" in the sidebar
+2. Search by vendor or invoice number, or filter by status/date
+3. Select documents with checkboxes (or Select All)
+4. Use "Bulk Actions" to delete or reprocess selected documents
+5. Deletion removes the record and files but preserves audit logs; reprocessing is allowed for ERROR, REJECTED, and NEEDS_REVIEW documents
+
+### 5. RPA Processing
 
 Once approved:
 - Invoice enters RPA queue
-- UiPath workflow picks up the invoice
+- RPA workflow picks up the invoice (UiPath on Windows, or `rpa/python_rpa_processor.py` on macOS/Linux)
 - Opens accounting application
 - Enters invoice data
 - Verifies success
@@ -252,6 +261,8 @@ Once approved:
 - `PUT /api/invoices/{document_id}` - Update invoice fields
 - `POST /api/invoices/{document_id}/approve` - Approve invoice
 - `POST /api/invoices/{document_id}/reject` - Reject invoice
+- `POST /api/invoices/bulk-delete` - Delete documents and stored files (audit logs preserved)
+- `POST /api/invoices/bulk-reprocess` - Re-run eligible documents (ERROR, REJECTED, NEEDS_REVIEW) through the pipeline
 
 ### RPA
 - `GET /api/rpa/queue` - Get RPA queue
@@ -425,6 +436,7 @@ document-ai-rpa/
 │   │   ├── validation/          # Validation logic
 │   │   ├── storage/             # File storage
 │   │   └── utils/               # Utilities
+│   ├── storage/documents/       # Uploaded document storage
 │   ├── tests/                   # Backend tests
 │   └── requirements.txt
 ├── frontend/
@@ -441,7 +453,6 @@ document-ai-rpa/
 │   ├── UiPath/InvoiceProcessor/ # UiPath workflow
 │   └── README.md                # RPA documentation
 ├── sample_documents/           # Test invoices
-├── storage/                     # Document storage
 ├── tests/e2e/                   # E2E tests
 ├── docker-compose.yml           # MongoDB container
 ├── .env.example                 # Environment template
