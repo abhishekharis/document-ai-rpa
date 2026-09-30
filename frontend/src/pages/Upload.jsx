@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { UploadCloud, FileText, X, Loader2, Upload as UploadIcon, ScanText, Brain, ShieldCheck, GitBranch } from 'lucide-react';
 import { invoiceAPI } from '../services/api';
+import PageHeader from '../components/ui/PageHeader';
+import Alert from '../components/ui/Alert';
+
+const PIPELINE_STEPS = [
+  { label: 'Upload', description: 'Document storage', icon: UploadIcon },
+  { label: 'OCR', description: 'Text extraction', icon: ScanText },
+  { label: 'Extraction', description: 'Field identification', icon: Brain },
+  { label: 'Validation', description: 'Data integrity', icon: ShieldCheck },
+  { label: 'Routing', description: 'Confidence-based', icon: GitBranch },
+];
 
 function Upload() {
   const [file, setFile] = useState(null);
@@ -91,19 +102,18 @@ function Upload() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-gray-900 mb-2">Upload Document</h1>
-        <p className="text-gray-600">Upload invoices, receipts, or other documents for AI-powered extraction.</p>
-      </div>
+      <PageHeader
+        title="Upload Document"
+        description="Upload invoices, receipts, or other documents for AI-powered extraction."
+      />
 
-      <div className="max-w-3xl">
+      <div className="max-w-3xl space-y-6">
         {/* Upload Area */}
         <div
-          className={`relative border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
+          className={`relative rounded-xl border-2 border-dashed bg-white p-10 sm:p-12 text-center transition-colors ${
             dragActive
-              ? 'border-primary-500 bg-primary-50'
-              : 'border-gray-300 hover:border-gray-400'
+              ? 'border-primary-500 bg-primary-50/60'
+              : 'border-slate-300 hover:border-primary-400 hover:bg-slate-50/60'
           }`}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
@@ -120,117 +130,94 @@ function Upload() {
           
           {!file ? (
             <>
-              <div className="text-5xl mb-4">📤</div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary-50 ring-8 ring-primary-50/50">
+                <UploadCloud className="h-7 w-7 text-primary-600" />
+              </div>
+              <h3 className="text-base font-semibold text-slate-900">
                 Drop your document here
               </h3>
-              <p className="text-gray-600 mb-4">or browse files</p>
-              <p className="text-sm text-gray-500">
+              <p className="mt-1 text-sm text-slate-500">
+                or <span className="font-medium text-primary-600">browse files</span>
+              </p>
+              <p className="mt-4 text-xs text-slate-400">
                 Supported formats: PDF, PNG, JPG, JPEG (max 10MB)
               </p>
             </>
           ) : (
-            <div className="bg-white border border-gray-200 rounded-lg p-6 inline-block">
-              <div className="flex items-center space-x-4">
-                <div className="text-4xl">📄</div>
-                <div className="text-left">
-                  <p className="font-medium text-gray-900">{file.name}</p>
-                  <p className="text-sm text-gray-600">{formatFileSize(file.size)}</p>
-                </div>
+            <div className="inline-flex items-center gap-4 rounded-lg border border-slate-200 bg-white px-5 py-4 text-left shadow-card">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50">
+                <FileText className="h-5 w-5 text-primary-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate font-medium text-slate-900">{file.name}</p>
+                <p className="text-sm text-slate-500">{formatFileSize(file.size)}</p>
               </div>
             </div>
           )}
         </div>
 
-        {error && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex items-center">
-              <span className="text-red-600 mr-2">⚠️</span>
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
-        )}
+        {error && <Alert type="error">{error}</Alert>}
 
         {result && (
-          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center">
-              <span className="text-green-600 mr-2">✅</span>
-              <div>
-                <p className="text-sm text-green-700 font-medium">Upload successful!</p>
-                <p className="text-sm text-green-700">Document ID: {result.document_id}</p>
-                <p className="text-sm text-green-700">Status: {result.status}</p>
-                <p className="text-sm text-gray-600 mt-1">Redirecting to invoice details...</p>
-              </div>
-            </div>
-          </div>
+          <Alert type="success" title="Upload successful!">
+            <p>Document ID: <span className="font-mono">{result.document_id}</span></p>
+            <p>Status: {result.status}</p>
+            <p className="mt-1 text-slate-500">Redirecting to invoice details...</p>
+          </Alert>
         )}
 
         {file && (
-          <div className="mt-6 flex space-x-4">
-            <button
-              onClick={handleUpload}
-              disabled={uploading}
-              className="flex-1 bg-primary-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-            >
-              {uploading ? (
-                <span className="flex items-center justify-center">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Processing...
-                </span>
-              ) : (
-                'Upload & Process'
-              )}
-            </button>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
             <button
               onClick={() => setFile(null)}
               disabled={uploading}
-              className="px-6 py-3 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="btn-secondary py-2.5"
             >
+              <X className="h-4 w-4" />
               Cancel
+            </button>
+            <button
+              onClick={handleUpload}
+              disabled={uploading}
+              className="btn-primary flex-1 py-2.5"
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <UploadIcon className="h-4 w-4" />
+                  Upload & Process
+                </>
+              )}
             </button>
           </div>
         )}
 
         {/* Processing Steps */}
-        <div className="mt-12">
-          <h3 className="text-lg font-medium text-gray-900 mb-6">Processing Pipeline</h3>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                <span className="text-2xl">📤</span>
-              </div>
-              <p className="text-sm font-medium text-gray-900">Upload</p>
-              <p className="text-xs text-gray-500">Document storage</p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                <span className="text-2xl">🔍</span>
-              </div>
-              <p className="text-sm font-medium text-gray-900">OCR</p>
-              <p className="text-xs text-gray-500">Text extraction</p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                <span className="text-2xl">🧠</span>
-              </div>
-              <p className="text-sm font-medium text-gray-900">Extraction</p>
-              <p className="text-xs text-gray-500">Field identification</p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                <span className="text-2xl">✓</span>
-              </div>
-              <p className="text-sm font-medium text-gray-900">Validation</p>
-              <p className="text-xs text-gray-500">Data integrity</p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                <span className="text-2xl">📊</span>
-              </div>
-              <p className="text-sm font-medium text-gray-900">Routing</p>
-              <p className="text-xs text-gray-500">Confidence-based</p>
-            </div>
-          </div>
+        <div className="card p-6">
+          <h3 className="card-title mb-6">Processing Pipeline</h3>
+          <ol className="grid grid-cols-1 gap-6 md:grid-cols-5 md:gap-2">
+            {PIPELINE_STEPS.map((step, index) => {
+              const Icon = step.icon;
+              return (
+                <li key={step.label} className="relative flex items-center gap-4 md:flex-col md:gap-0 md:text-center">
+                  {index < PIPELINE_STEPS.length - 1 && (
+                    <span className="absolute left-5 top-10 h-6 w-px bg-slate-200 md:left-1/2 md:top-5 md:h-px md:w-full" />
+                  )}
+                  <div className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50 ring-4 ring-white">
+                    <Icon className="h-5 w-5 text-primary-600" />
+                  </div>
+                  <div className="md:mt-3">
+                    <p className="text-sm font-medium text-slate-900">{step.label}</p>
+                    <p className="text-xs text-slate-500">{step.description}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       </div>
     </div>

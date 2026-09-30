@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { FileText, Loader, Eye, CheckCircle2, Bot, XCircle, Upload, ArrowRight, Sparkles } from 'lucide-react';
 import { invoiceAPI } from '../services/api';
+import PageHeader from '../components/ui/PageHeader';
+import StatCard from '../components/ui/StatCard';
+import StatusBadge from '../components/ui/StatusBadge';
+import LoadingState from '../components/ui/LoadingState';
+import EmptyState from '../components/ui/EmptyState';
 
 function Dashboard() {
   const [invoices, setInvoices] = useState([]);
@@ -40,184 +46,129 @@ function Dashboard() {
     }
   };
 
-  const getStatusStyle = (status) => {
-    const styles = {
-      'UPLOADED': 'bg-gray-100 text-gray-700 border-gray-200',
-      'PROCESSING': 'bg-blue-50 text-blue-700 border-blue-200',
-      'PROCESSED': 'bg-green-50 text-green-700 border-green-200',
-      'NEEDS_REVIEW': 'bg-amber-50 text-amber-700 border-amber-200',
-      'APPROVED': 'bg-green-50 text-green-700 border-green-200',
-      'REJECTED': 'bg-red-50 text-red-700 border-red-200',
-      'RPA_QUEUED': 'bg-purple-50 text-purple-700 border-purple-200',
-      'RPA_PROCESSING': 'bg-blue-50 text-blue-700 border-blue-200',
-      'RPA_COMPLETED': 'bg-green-50 text-green-700 border-green-200',
-      'RPA_FAILED': 'bg-red-50 text-red-700 border-red-200',
-      'ERROR': 'bg-red-50 text-red-700 border-red-200',
-    };
-    return styles[status] || 'bg-gray-100 text-gray-700 border-gray-200';
-  };
-
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex items-center space-x-2">
-          <div className="w-4 h-4 bg-primary-600 rounded-full animate-bounce"></div>
-          <div className="w-4 h-4 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-          <div className="w-4 h-4 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-        </div>
-      </div>
-    );
+    return <LoadingState label="Loading dashboard..." />;
   }
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-gray-900 mb-2">Document Intelligence</h1>
-        <p className="text-gray-600">Upload, process, and extract structured information from your documents.</p>
-      </div>
+      <PageHeader
+        title="Document Intelligence"
+        description="Upload, process, and extract structured information from your documents."
+        actions={
+          <Link to="/upload" className="btn-primary">
+            <Upload className="h-4 w-4" />
+            Upload Document
+          </Link>
+        }
+      />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-500">Total Documents</span>
-            <span className="text-2xl">📊</span>
-          </div>
-          <div className="text-3xl font-semibold text-gray-900">{stats.total}</div>
-        </div>
-        
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-500">Processing</span>
-            <span className="text-2xl">⚙️</span>
-          </div>
-          <div className="text-3xl font-semibold text-blue-600">{stats.processing}</div>
-        </div>
-        
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-500">Needs Review</span>
-            <span className="text-2xl">👁️</span>
-          </div>
-          <div className="text-3xl font-semibold text-amber-600">{stats.needsReview}</div>
-        </div>
-        
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-500">Approved</span>
-            <span className="text-2xl">✅</span>
-          </div>
-          <div className="text-3xl font-semibold text-green-600">{stats.approved}</div>
-        </div>
-        
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-500">RPA Completed</span>
-            <span className="text-2xl">🤖</span>
-          </div>
-          <div className="text-3xl font-semibold text-green-600">{stats.rpaCompleted}</div>
-        </div>
-        
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-500">RPA Failed</span>
-            <span className="text-2xl">❌</span>
-          </div>
-          <div className="text-3xl font-semibold text-red-600">{stats.rpaFailed}</div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+        <StatCard label="Total Documents" value={stats.total} icon={FileText} tone="slate" />
+        <StatCard label="Processing" value={stats.processing} icon={Loader} tone="blue" />
+        <StatCard label="Needs Review" value={stats.needsReview} icon={Eye} tone="amber" />
+        <StatCard label="Approved" value={stats.approved} icon={CheckCircle2} tone="emerald" />
+        <StatCard label="RPA Completed" value={stats.rpaCompleted} icon={Bot} tone="primary" />
+        <StatCard label="RPA Failed" value={stats.rpaFailed} icon={XCircle} tone="red" />
       </div>
 
       {/* Upload CTA */}
-      <div className="bg-gradient-to-r from-primary-600 to-primary-800 rounded-xl p-8 mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold text-white mb-2">Process a New Document</h2>
-            <p className="text-primary-100">Upload invoices, receipts, or other documents for AI-powered extraction.</p>
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 p-6 sm:p-8 mb-8 shadow-card">
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="hidden sm:flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20">
+              <Sparkles className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-white">Process a New Document</h2>
+              <p className="mt-1 text-sm text-primary-100">Upload invoices, receipts, or other documents for AI-powered extraction.</p>
+            </div>
           </div>
           <Link
             to="/upload"
-            className="bg-white text-primary-700 px-6 py-3 rounded-lg font-medium hover:bg-primary-50 transition-colors"
+            className="btn bg-white text-primary-700 hover:bg-primary-50 shadow-sm"
           >
             Upload Document
+            <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </div>
 
       {/* Documents Table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">Recent Documents</h3>
+      <div className="card overflow-hidden">
+        <div className="card-header">
+          <h3 className="card-title">Recent Documents</h3>
+          {invoices.length > 0 && (
+            <Link to="/documents" className="link inline-flex items-center gap-1 text-sm">
+              View all
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          )}
         </div>
         
         {invoices.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="text-4xl mb-4">📄</div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No documents yet</h3>
-            <p className="text-gray-600 mb-4">Upload your first document to begin extracting structured data.</p>
-            <Link
-              to="/upload"
-              className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-            >
-              Upload Document
-            </Link>
-          </div>
+          <EmptyState
+            icon={FileText}
+            title="No documents yet"
+            description="Upload your first document to begin extracting structured data."
+            action={
+              <Link to="/upload" className="btn-primary">
+                <Upload className="h-4 w-4" />
+                Upload Document
+              </Link>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-slate-50/80 border-b border-slate-100">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Document ID</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="table-th">Document ID</th>
+                  <th className="table-th">Vendor</th>
+                  <th className="table-th">Invoice #</th>
+                  <th className="table-th text-right">Total</th>
+                  <th className="table-th">Status</th>
+                  <th className="table-th">Created</th>
+                  <th className="table-th text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-slate-100">
                 {invoices.map((invoice) => (
-                  <tr key={invoice.document_id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <tr key={invoice.document_id} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="table-td font-mono text-xs font-medium text-slate-900">
                       {invoice.document_id}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="table-td font-medium text-slate-700">
                       {invoice.vendor?.name || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="table-td">
                       {invoice.invoice_number || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="table-td text-right tabular-nums">
                       {invoice.total ? `${invoice.currency} ${invoice.total.toFixed(2)}` : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getStatusStyle(invoice.status)}`}>
-                        {invoice.status.replace(/_/g, ' ')}
-                      </span>
+                    <td className="table-td">
+                      <StatusBadge status={invoice.status} />
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="table-td">
                       {new Date(invoice.created_at).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <Link
-                        to={`/invoice/${invoice.document_id}`}
-                        className="text-primary-600 hover:text-primary-800 font-medium"
-                      >
-                        View
-                      </Link>
-                      {invoice.status === 'NEEDS_REVIEW' && (
-                        <>
-                          {' '}
-                          <span className="text-gray-300">|</span>{' '}
+                    <td className="table-td text-right">
+                      <div className="inline-flex items-center gap-3">
+                        <Link to={`/invoice/${invoice.document_id}`} className="link">
+                          View
+                        </Link>
+                        {invoice.status === 'NEEDS_REVIEW' && (
                           <Link
                             to={`/review/${invoice.document_id}`}
-                            className="text-amber-600 hover:text-amber-800 font-medium"
+                            className="font-medium text-amber-600 hover:text-amber-700"
                           >
                             Review
                           </Link>
-                        </>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
