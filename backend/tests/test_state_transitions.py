@@ -74,6 +74,27 @@ class TestStateTransitions:
         assert can_transition is True
         assert error == ""
     
+    def test_valid_transition_rejected_to_processing_for_reprocess(self):
+        can_transition, error = StateTransitionValidator.validate_transition(
+            InvoiceStatus.REJECTED, InvoiceStatus.PROCESSING
+        )
+        assert can_transition is True
+        assert error == ""
+    
+    def test_valid_transition_needs_review_to_processing_for_reprocess(self):
+        can_transition, error = StateTransitionValidator.validate_transition(
+            InvoiceStatus.NEEDS_REVIEW, InvoiceStatus.PROCESSING
+        )
+        assert can_transition is True
+        assert error == ""
+    
+    def test_invalid_transition_rpa_completed_to_processing(self):
+        can_transition, error = StateTransitionValidator.validate_transition(
+            InvoiceStatus.RPA_COMPLETED, InvoiceStatus.PROCESSING
+        )
+        assert can_transition is False
+        assert "Invalid transition" in error
+    
     def test_same_state_transition(self):
         can_transition, error = StateTransitionValidator.validate_transition(
             InvoiceStatus.PROCESSING, InvoiceStatus.PROCESSING

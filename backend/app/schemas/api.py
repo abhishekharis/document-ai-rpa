@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -32,6 +32,23 @@ class InvoiceResponse(BaseModel):
 class InvoiceListResponse(BaseModel):
     invoices: List[InvoiceResponse]
     count: int
+
+
+class BulkActionRequest(BaseModel):
+    document_ids: List[str] = Field(..., min_length=1)
+
+
+class BulkActionResult(BaseModel):
+    document_id: str
+    success: bool
+    status: Optional[str] = None
+    message: str
+
+
+class BulkActionResponse(BaseModel):
+    results: List[BulkActionResult]
+    succeeded: int
+    failed: int
 
 
 class ApprovalRequest(BaseModel):

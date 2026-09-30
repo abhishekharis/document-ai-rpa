@@ -1,7 +1,7 @@
 from typing import List, Optional
 from datetime import datetime
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceUpdate
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceUpdate, Vendor, Extraction, Validation, Review, RPAStatus
 from app.models.audit_log import AuditLog
 import uuid
 
@@ -74,6 +74,37 @@ class InvoiceRepository:
             {
                 "$set": {
                     "status": new_status.value,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        return result.modified_count > 0
+    
+    async def delete(self, document_id: str) -> bool:
+        """Delete an invoice record."""
+        result = await self.collection.delete_one({"document_id": document_id})
+        return result.deleted_count > 0
+    
+    async def reset_for_reprocessing(self, document_id: str, old_status: InvoiceStatus) -> bool:
+        """Clear extracted data and move the invoice back to PROCESSING, only if it is still in old_status."""
+        result = await self.collection.update_one(
+            {"document_id": document_id, "status": old_status.value},
+            {
+                "$set": {
+                    "status": InvoiceStatus.PROCESSING.value,
+                    "vendor": Vendor(name="").model_dump(),
+                    "invoice_number": "",
+                    "invoice_date": "",
+                    "due_date": None,
+                    "currency": "USD",
+                    "subtotal": None,
+                    "tax": None,
+                    "total": None,
+                    "line_items": [],
+                    "extraction": Extraction(overall_confidence=0.0, page_count=0).model_dump(),
+                    "validation": Validation().model_dump(),
+                    "review": Review().model_dump(),
+                    "rpa": RPAStatus().model_dump(),
                     "updated_at": datetime.utcnow()
                 }
             }

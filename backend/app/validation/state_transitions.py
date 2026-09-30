@@ -8,9 +8,9 @@ class StateTransitionValidator:
         InvoiceStatus.UPLOADED: [InvoiceStatus.PROCESSING, InvoiceStatus.ERROR],
         InvoiceStatus.PROCESSING: [InvoiceStatus.PROCESSED, InvoiceStatus.NEEDS_REVIEW, InvoiceStatus.ERROR],
         InvoiceStatus.PROCESSED: [InvoiceStatus.NEEDS_REVIEW, InvoiceStatus.APPROVED, InvoiceStatus.REJECTED],
-        InvoiceStatus.NEEDS_REVIEW: [InvoiceStatus.APPROVED, InvoiceStatus.REJECTED],
+        InvoiceStatus.NEEDS_REVIEW: [InvoiceStatus.APPROVED, InvoiceStatus.REJECTED, InvoiceStatus.PROCESSING],  # Reprocess
         InvoiceStatus.APPROVED: [InvoiceStatus.RPA_QUEUED],
-        InvoiceStatus.REJECTED: [],
+        InvoiceStatus.REJECTED: [InvoiceStatus.PROCESSING],  # Reprocess
         InvoiceStatus.RPA_QUEUED: [InvoiceStatus.RPA_PROCESSING],
         InvoiceStatus.RPA_PROCESSING: [InvoiceStatus.RPA_COMPLETED, InvoiceStatus.RPA_FAILED],
         InvoiceStatus.RPA_COMPLETED: [],

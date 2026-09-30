@@ -16,7 +16,7 @@ from app.schemas.api import (
     UploadResponse, InvoiceResponse, InvoiceListResponse,
     ApprovalRequest, RejectionRequest, RPAQueueResponse,
     RPAStartRequest, RPAResultRequest, RPAResultResponse,
-    HealthResponse
+    HealthResponse, BulkActionRequest, BulkActionResult, BulkActionResponse
 )
 from app.utils.validators import (
     validate_file_type, validate_file_size, sanitize_string
@@ -133,11 +133,22 @@ async def upload_invoice(
     ))
     
     # Process the document (OCR + extraction + validation)
-    processing_service = ProcessingService()
+    final_status = await run_processing(repo, ProcessingService(), document_id, content, file.filename or "document")
+    return UploadResponse(document_id=document_id, status=final_status.value)
+
+
+async def run_processing(
+    repo: InvoiceRepository,
+    processing_service: ProcessingService,
+    document_id: str,
+    content: bytes,
+    filename: str
+) -> InvoiceStatus:
+    """Run the processing pipeline for an invoice in PROCESSING status and return its resulting status."""
     try:
         processing_result = await processing_service.process_invoice(
             content,
-            file.filename or "document",
+            filename,
             document_id
         )
         
@@ -198,9 +209,9 @@ async def upload_invoice(
                 "queued_at": datetime.utcnow().isoformat()
             })
             
-            return UploadResponse(document_id=document_id, status=InvoiceStatus.RPA_QUEUED.value)
+            return InvoiceStatus.RPA_QUEUED
         
-        return UploadResponse(document_id=document_id, status=final_status.value)
+        return final_status
         
     except Exception as e:
         # Update status to ERROR
@@ -213,7 +224,7 @@ async def upload_invoice(
             message=f"Processing failed: {str(e)}"
         ))
         
-        return UploadResponse(document_id=document_id, status=InvoiceStatus.ERROR.value)
+        return InvoiceStatus.ERROR
 
 
 # Get All Invoices
@@ -242,6 +253,114 @@ async def get_invoices(
         invoices=[InvoiceResponse(**inv.model_dump()) for inv in invoices],
         count=len(invoices)
     )
+
+
+# Statuses where the document is mid-pipeline and must not be deleted
+DELETE_BLOCKED_STATUSES = {InvoiceStatus.PROCESSING, InvoiceStatus.RPA_PROCESSING}
+REPROCESSABLE_STATUSES = {InvoiceStatus.ERROR, InvoiceStatus.REJECTED, InvoiceStatus.NEEDS_REVIEW}
+
+
+def build_bulk_response(results: list[BulkActionResult]) -> BulkActionResponse:
+    succeeded = sum(1 for r in results if r.success)
+    return BulkActionResponse(results=results, succeeded=succeeded, failed=len(results) - succeeded)
+
+
+# Bulk Delete
+@app.post("/api/invoices/bulk-delete", response_model=BulkActionResponse)
+async def bulk_delete_invoices(
+    request: BulkActionRequest,
+    database: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """Permanently delete invoices and their stored files. Audit logs are kept."""
+    repo = InvoiceRepository(database)
+    results = []
+    
+    for document_id in dict.fromkeys(request.document_ids):
+        try:
+            invoice = await repo.get_by_document_id(document_id)
+            if not invoice:
+                results.append(BulkActionResult(document_id=document_id, success=False, message="Document not found"))
+                continue
+            if invoice.status in DELETE_BLOCKED_STATUSES:
+                results.append(BulkActionResult(
+                    document_id=document_id, success=False, status=invoice.status.value,
+                    message=f"Cannot delete while status is {invoice.status.value}"
+                ))
+                continue
+            
+            await repo.delete(document_id)
+            file_storage.delete_document(document_id)
+            
+            await repo.create_audit_log(AuditLog(
+                document_id=document_id,
+                event="DOCUMENT_DELETED",
+                old_status=invoice.status.value,
+                message=f"Document deleted: {invoice.original_filename}"
+            ))
+            results.append(BulkActionResult(document_id=document_id, success=True, message="Deleted"))
+        except Exception as e:
+            results.append(BulkActionResult(document_id=document_id, success=False, message=f"Delete failed: {str(e)}"))
+    
+    return build_bulk_response(results)
+
+
+# Bulk Reprocess
+@app.post("/api/invoices/bulk-reprocess", response_model=BulkActionResponse)
+async def bulk_reprocess_invoices(
+    request: BulkActionRequest,
+    database: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """Re-run the processing pipeline on eligible invoices using their stored original files."""
+    repo = InvoiceRepository(database)
+    processing_service = ProcessingService()
+    results = []
+    
+    for document_id in dict.fromkeys(request.document_ids):
+        try:
+            invoice = await repo.get_by_document_id(document_id)
+            if not invoice:
+                results.append(BulkActionResult(document_id=document_id, success=False, message="Document not found"))
+                continue
+            if invoice.status not in REPROCESSABLE_STATUSES:
+                results.append(BulkActionResult(
+                    document_id=document_id, success=False, status=invoice.status.value,
+                    message=f"Not eligible for reprocessing (status: {invoice.status.value})"
+                ))
+                continue
+            
+            file_path = file_storage.get_original_file(document_id)
+            if not file_path or not file_path.exists():
+                results.append(BulkActionResult(
+                    document_id=document_id, success=False, status=invoice.status.value,
+                    message="Original file not found"
+                ))
+                continue
+            content = file_path.read_bytes()
+            
+            if not await repo.reset_for_reprocessing(document_id, invoice.status):
+                results.append(BulkActionResult(
+                    document_id=document_id, success=False,
+                    message="Document status changed; not reprocessed"
+                ))
+                continue
+            
+            await repo.create_audit_log(AuditLog(
+                document_id=document_id,
+                event="REPROCESS_STARTED",
+                old_status=invoice.status.value,
+                new_status=InvoiceStatus.PROCESSING.value,
+                message="Document reprocessing started"
+            ))
+            
+            final_status = await run_processing(repo, processing_service, document_id, content, invoice.original_filename)
+            results.append(BulkActionResult(
+                document_id=document_id, success=True, status=final_status.value,
+                message=f"Reprocessed - status: {final_status.value}"
+            ))
+        except Exception as e:
+            results.append(BulkActionResult(document_id=document_id, success=False, message=f"Reprocess failed: {str(e)}"))
+    
+    return build_bulk_response(results)
 
 
 # Get Invoice by Document ID
