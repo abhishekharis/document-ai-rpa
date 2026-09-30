@@ -1,6 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { Search, ChevronDown, Trash2, RefreshCw, FileText, SearchX, Upload, Loader2, AlertTriangle } from 'lucide-react';
 import { invoiceAPI } from '../services/api';
+import PageHeader from '../components/ui/PageHeader';
+import StatusBadge from '../components/ui/StatusBadge';
+import LoadingState from '../components/ui/LoadingState';
+import EmptyState from '../components/ui/EmptyState';
+import Alert from '../components/ui/Alert';
 
 const STATUS_OPTIONS = [
   { value: 'ALL', label: 'All' },
@@ -36,12 +42,6 @@ const ACTIONS = {
     description: 'Documents with status Error, Rejected, or Needs Review are run through the processing pipeline again; others are skipped. This may take a while.',
     run: invoiceAPI.bulkReprocess,
   },
-};
-
-const NOTICE_STYLES = {
-  success: { box: 'bg-green-50 border-green-200', text: 'text-green-700', icon: '✅' },
-  warning: { box: 'bg-amber-50 border-amber-200', text: 'text-amber-700', icon: '⚠️' },
-  error: { box: 'bg-red-50 border-red-200', text: 'text-red-700', icon: '⚠️' },
 };
 
 const pluralize = (count) => `${count} document${count === 1 ? '' : 's'}`;
@@ -194,68 +194,44 @@ function Documents() {
     setDateFilter('ALL');
   };
 
-  const getStatusStyle = (status) => {
-    const styles = {
-      'UPLOADED': 'bg-gray-100 text-gray-700 border-gray-200',
-      'PROCESSING': 'bg-blue-50 text-blue-700 border-blue-200',
-      'PROCESSED': 'bg-green-50 text-green-700 border-green-200',
-      'NEEDS_REVIEW': 'bg-amber-50 text-amber-700 border-amber-200',
-      'APPROVED': 'bg-green-50 text-green-700 border-green-200',
-      'REJECTED': 'bg-red-50 text-red-700 border-red-200',
-      'RPA_QUEUED': 'bg-purple-50 text-purple-700 border-purple-200',
-      'RPA_PROCESSING': 'bg-blue-50 text-blue-700 border-blue-200',
-      'RPA_COMPLETED': 'bg-green-50 text-green-700 border-green-200',
-      'RPA_FAILED': 'bg-red-50 text-red-700 border-red-200',
-      'ERROR': 'bg-red-50 text-red-700 border-red-200',
-    };
-    return styles[status] || 'bg-gray-100 text-gray-700 border-gray-200';
-  };
-
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex items-center space-x-2">
-          <div className="w-4 h-4 bg-primary-600 rounded-full animate-bounce"></div>
-          <div className="w-4 h-4 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-          <div className="w-4 h-4 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-        </div>
-      </div>
-    );
+    return <LoadingState label="Loading documents..." />;
   }
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-gray-900 mb-2">Documents</h1>
-        <p className="text-gray-600">Manage your uploaded and processed documents.</p>
-      </div>
+      <PageHeader
+        title="Documents"
+        description="Manage your uploaded and processed documents."
+        actions={
+          <Link to="/upload" className="btn-primary">
+            <Upload className="h-4 w-4" />
+            Upload Document
+          </Link>
+        }
+      />
 
-      {loadError && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <div className="flex items-center">
-            <span className="text-red-600 mr-2">⚠️</span>
-            <p className="text-sm text-red-700">{loadError}</p>
-          </div>
-        </div>
-      )}
+      {loadError && <Alert type="error" className="mb-6">{loadError}</Alert>}
 
       {/* Controls */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="card p-4 mb-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="flex flex-col sm:flex-row gap-3 flex-1">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by vendor or invoice number..."
-            aria-label="Search by vendor or invoice number"
-            className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          />
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by vendor or invoice number..."
+              aria-label="Search by vendor or invoice number"
+              className="input pl-9"
+            />
+          </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             aria-label="Filter by status"
-            className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="input sm:w-40"
           >
             {STATUS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -265,7 +241,7 @@ function Documents() {
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
             aria-label="Filter by date"
-            className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="input sm:w-40"
           >
             {DATE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -273,9 +249,11 @@ function Documents() {
           </select>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4 sm:justify-end">
           {selectedCount > 0 && (
-            <span className="text-sm font-medium text-gray-700">{pluralize(selectedCount)} selected</span>
+            <span className="inline-flex items-center rounded-full bg-primary-50 px-3 py-1 text-sm font-medium text-primary-700">
+              {pluralize(selectedCount)} selected
+            </span>
           )}
           <div className="relative" ref={menuRef}>
             <button
@@ -284,26 +262,29 @@ function Documents() {
               disabled={selectedCount === 0 || actionRunning}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+              className="btn-secondary"
             >
-              Bulk Actions ▾
+              Bulk Actions
+              <ChevronDown className={`h-4 w-4 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
             </button>
             {menuOpen && (
-              <div role="menu" className="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
+              <div role="menu" className="absolute right-0 mt-2 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg z-20">
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => chooseAction('delete')}
-                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                 >
+                  <Trash2 className="h-4 w-4" />
                   Delete
                 </button>
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => chooseAction('reprocess')}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
                 >
+                  <RefreshCw className="h-4 w-4" />
                   Reprocess
                 </button>
               </div>
@@ -313,54 +294,35 @@ function Documents() {
       </div>
 
       {notice && (
-        <div className={`mb-6 p-4 border rounded-lg flex items-start justify-between ${NOTICE_STYLES[notice.type].box}`}>
-          <div className="flex items-start">
-            <span className="mr-2">{NOTICE_STYLES[notice.type].icon}</span>
-            <div className={`text-sm ${NOTICE_STYLES[notice.type].text}`}>
-              <p className="font-medium">{notice.message}</p>
-              {notice.details.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {notice.details.map((detail) => (
-                    <li key={detail} className="flex items-start">
-                      <span className="mr-2">•</span>
-                      <span>{detail}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setNotice(null)}
-            aria-label="Dismiss notice"
-            className={`text-sm font-medium ml-4 ${NOTICE_STYLES[notice.type].text}`}
-          >
-            ✕
-          </button>
-        </div>
+        <Alert
+          type={notice.type}
+          title={notice.message}
+          details={notice.details}
+          onDismiss={() => setNotice(null)}
+          className="mb-6"
+        />
       )}
 
       {/* Documents Table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="card overflow-hidden">
         {invoices.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="text-4xl mb-4">📄</div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No documents yet</h3>
-            <p className="text-gray-600 mb-4">Upload your first document to begin extracting structured data.</p>
-            <Link
-              to="/upload"
-              className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-            >
-              Upload Document
-            </Link>
-          </div>
+          <EmptyState
+            icon={FileText}
+            title="No documents yet"
+            description="Upload your first document to begin extracting structured data."
+            action={
+              <Link to="/upload" className="btn-primary">
+                <Upload className="h-4 w-4" />
+                Upload Document
+              </Link>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-slate-50/80 border-b border-slate-100">
                 <tr>
-                  <th className="px-6 py-3 text-left w-12">
+                  <th className="table-th w-12">
                     <input
                       ref={selectAllRef}
                       type="checkbox"
@@ -368,31 +330,32 @@ function Documents() {
                       onChange={toggleAll}
                       disabled={visibleInvoices.length === 0}
                       aria-label="Select all documents"
-                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                      className="checkbox"
                     />
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Document ID</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="table-th">Document ID</th>
+                  <th className="table-th">Vendor</th>
+                  <th className="table-th">Invoice #</th>
+                  <th className="table-th text-right">Total</th>
+                  <th className="table-th">Status</th>
+                  <th className="table-th">Created</th>
+                  <th className="table-th text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-slate-100">
                 {visibleInvoices.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No documents found</h3>
-                      <p className="text-gray-600 mb-4">Try changing your search or filters.</p>
-                      <button
-                        type="button"
-                        onClick={clearFilters}
-                        className="text-primary-600 hover:text-primary-800 text-sm font-medium"
-                      >
-                        Clear filters
-                      </button>
+                    <td colSpan={8}>
+                      <EmptyState
+                        icon={SearchX}
+                        title="No documents found"
+                        description="Try changing your search or filters."
+                        action={
+                          <button type="button" onClick={clearFilters} className="btn-secondary">
+                            Clear filters
+                          </button>
+                        }
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -401,7 +364,7 @@ function Documents() {
                     return (
                       <tr
                         key={invoice.document_id}
-                        className={`transition-colors ${isSelected ? 'bg-primary-50' : 'hover:bg-gray-50'}`}
+                        className={`transition-colors ${isSelected ? 'bg-primary-50/70' : 'hover:bg-slate-50/70'}`}
                       >
                         <td className="px-6 py-4">
                           <input
@@ -409,48 +372,41 @@ function Documents() {
                             checked={isSelected}
                             onChange={() => toggleOne(invoice.document_id)}
                             aria-label={`Select ${invoice.document_id}`}
-                            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                            className="checkbox"
                           />
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <td className="table-td font-mono text-xs font-medium text-slate-900">
                           {invoice.document_id}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <td className="table-td font-medium text-slate-700">
                           {invoice.vendor?.name || '-'}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <td className="table-td">
                           {invoice.invoice_number || '-'}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <td className="table-td text-right tabular-nums">
                           {invoice.total ? `${invoice.currency} ${invoice.total.toFixed(2)}` : '-'}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getStatusStyle(invoice.status)}`}>
-                            {invoice.status.replace(/_/g, ' ')}
-                          </span>
+                        <td className="table-td">
+                          <StatusBadge status={invoice.status} />
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <td className="table-td">
                           {new Date(invoice.created_at).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <Link
-                            to={`/invoice/${invoice.document_id}`}
-                            className="text-primary-600 hover:text-primary-800 font-medium"
-                          >
-                            View
-                          </Link>
-                          {invoice.status === 'NEEDS_REVIEW' && (
-                            <>
-                              {' '}
-                              <span className="text-gray-300">|</span>{' '}
+                        <td className="table-td text-right">
+                          <div className="inline-flex items-center gap-3">
+                            <Link to={`/invoice/${invoice.document_id}`} className="link">
+                              View
+                            </Link>
+                            {invoice.status === 'NEEDS_REVIEW' && (
                               <Link
                                 to={`/review/${invoice.document_id}`}
-                                className="text-amber-600 hover:text-amber-800 font-medium"
+                                className="font-medium text-amber-600 hover:text-amber-700"
                               >
                                 Review
                               </Link>
-                            </>
-                          )}
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -464,18 +420,29 @@ function Documents() {
 
       {/* Confirm Dialog */}
       {pendingAction && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-md">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {ACTIONS[pendingAction].label} {pluralize(selectedCount)}?
-            </h3>
-            <p className="text-sm text-gray-600 mb-6">{ACTIONS[pendingAction].description}</p>
-            <div className="flex justify-end space-x-3">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="card w-full max-w-md p-6 shadow-xl">
+            <div className="flex items-start gap-4">
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                pendingAction === 'delete' ? 'bg-red-100' : 'bg-primary-100'
+              }`}>
+                {pendingAction === 'delete'
+                  ? <AlertTriangle className="h-5 w-5 text-red-600" />
+                  : <RefreshCw className="h-5 w-5 text-primary-600" />}
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  {ACTIONS[pendingAction].label} {pluralize(selectedCount)}?
+                </h3>
+                <p className="mt-2 text-sm text-slate-500">{ACTIONS[pendingAction].description}</p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setPendingAction(null)}
                 disabled={actionRunning}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="btn-secondary"
               >
                 Cancel
               </button>
@@ -483,15 +450,13 @@ function Documents() {
                 type="button"
                 onClick={confirmAction}
                 disabled={actionRunning}
-                className={`px-4 py-2 rounded-lg text-sm font-medium text-white disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors ${
-                  pendingAction === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'
-                }`}
+                className={pendingAction === 'delete' ? 'btn-danger' : 'btn-primary'}
               >
                 {actionRunning ? (
-                  <span className="flex items-center">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     {ACTIONS[pendingAction].runningLabel}
-                  </span>
+                  </>
                 ) : (
                   ACTIONS[pendingAction].label
                 )}
