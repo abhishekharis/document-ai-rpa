@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, Loader, Eye, CheckCircle2, Bot, XCircle, Upload, ArrowRight, Sparkles } from 'lucide-react';
+import { FileText, Eye, CheckCircle2, AlertTriangle, Upload, ArrowRight, Sparkles } from 'lucide-react';
 import { invoiceAPI } from '../services/api';
 import PageHeader from '../components/ui/PageHeader';
 import StatCard from '../components/ui/StatCard';
@@ -8,16 +8,17 @@ import StatusBadge from '../components/ui/StatusBadge';
 import LoadingState from '../components/ui/LoadingState';
 import EmptyState from '../components/ui/EmptyState';
 
+// Documents that failed somewhere in the pipeline and need a user decision (e.g. reprocess)
+const ATTENTION_STATUSES = ['ERROR', 'REJECTED', 'RPA_FAILED'];
+
 function Dashboard() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     total: 0,
-    processing: 0,
     needsReview: 0,
-    approved: 0,
+    needsAttention: 0,
     rpaCompleted: 0,
-    rpaFailed: 0,
   });
 
   useEffect(() => {
@@ -32,11 +33,9 @@ function Dashboard() {
       // Calculate stats
       const stats = {
         total: data.count,
-        processing: data.invoices.filter(i => i.status === 'PROCESSING').length,
         needsReview: data.invoices.filter(i => i.status === 'NEEDS_REVIEW').length,
-        approved: data.invoices.filter(i => i.status === 'APPROVED').length,
+        needsAttention: data.invoices.filter(i => ATTENTION_STATUSES.includes(i.status)).length,
         rpaCompleted: data.invoices.filter(i => i.status === 'RPA_COMPLETED').length,
-        rpaFailed: data.invoices.filter(i => i.status === 'RPA_FAILED').length,
       };
       setStats(stats);
     } catch (error) {
@@ -64,13 +63,11 @@ function Dashboard() {
       />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard label="Total Documents" value={stats.total} icon={FileText} tone="slate" />
-        <StatCard label="Processing" value={stats.processing} icon={Loader} tone="blue" />
         <StatCard label="Needs Review" value={stats.needsReview} icon={Eye} tone="amber" />
-        <StatCard label="Approved" value={stats.approved} icon={CheckCircle2} tone="emerald" />
-        <StatCard label="RPA Completed" value={stats.rpaCompleted} icon={Bot} tone="primary" />
-        <StatCard label="RPA Failed" value={stats.rpaFailed} icon={XCircle} tone="red" />
+        <StatCard label="Needs Attention" value={stats.needsAttention} icon={AlertTriangle} tone="red" />
+        <StatCard label="RPA Completed" value={stats.rpaCompleted} icon={CheckCircle2} tone="emerald" />
       </div>
 
       {/* Upload CTA */}
