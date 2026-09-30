@@ -4,7 +4,7 @@ import { useState } from 'react';
 const navigation = [
   { name: 'Dashboard', href: '/', icon: '📊' },
   { name: 'Upload', href: '/upload', icon: '📤' },
-  { name: 'Documents', href: '/', icon: '📄' },
+  { name: 'Documents', href: '/documents', icon: '📄' },
   { name: 'Processing', href: '/', icon: '⚙️' },
   { name: 'Results', href: '/', icon: '✅' },
 ];

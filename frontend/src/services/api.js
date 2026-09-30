@@ -57,6 +57,16 @@ export const invoiceAPI = {
     return response.data;
   },
 
+  bulkDelete: async (documentIds) => {
+    const response = await api.post('/invoices/bulk-delete', { document_ids: documentIds });
+    return response.data;
+  },
+
+  bulkReprocess: async (documentIds) => {
+    const response = await api.post('/invoices/bulk-reprocess', { document_ids: documentIds });
+    return response.data;
+  },
+
   getDocument: async (documentId) => {
     const response = await api.get(`/invoices/${documentId}/document`, {
       responseType: 'blob',
