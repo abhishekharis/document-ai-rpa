@@ -1,13 +1,28 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useState } from 'react';
+import { LayoutDashboard, Upload, FileText, Cog, CheckCircle2, ScanLine, Menu, X, User } from 'lucide-react';
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: '📊' },
-  { name: 'Upload', href: '/upload', icon: '📤' },
-  { name: 'Documents', href: '/documents', icon: '📄' },
-  { name: 'Processing', href: '/', icon: '⚙️' },
-  { name: 'Results', href: '/', icon: '✅' },
+  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Upload', href: '/upload', icon: Upload },
+  { name: 'Documents', href: '/documents', icon: FileText },
+  { name: 'Processing', href: '/', icon: Cog },
+  { name: 'Results', href: '/', icon: CheckCircle2 },
 ];
+
+function Brand() {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 shadow-sm">
+        <ScanLine className="h-5 w-5 text-white" />
+      </div>
+      <div className="leading-tight">
+        <h1 className="text-sm font-semibold text-slate-900">Document AI</h1>
+        <p className="text-xs text-slate-500">Intelligent Processing</p>
+      </div>
+    </div>
+  );
+}
 
 function Sidebar() {
   const location = useLocation();
@@ -15,61 +30,54 @@ function Sidebar() {
 
   return (
     <>
-      {/* Mobile menu button */}
-      <button
-        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white border border-gray-200 rounded-lg shadow-sm"
-      >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          {isMobileMenuOpen ? (
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          ) : (
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          )}
-        </svg>
-      </button>
+      {/* Mobile top bar */}
+      <div className="lg:hidden sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur">
+        <Brand />
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
+          className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+        >
+          {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
+      </div>
 
       {/* Mobile overlay */}
       {isMobileMenuOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+          className="lg:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <div className={`fixed left-0 top-0 h-full bg-white border-r border-gray-200 flex flex-col z-50 transition-transform duration-300 ease-in-out ${
+      <div className={`fixed left-0 top-0 h-full bg-white border-r border-slate-200 flex flex-col z-50 transition-transform duration-300 ease-in-out ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       } w-64`}>
         {/* Logo */}
-        <div className="p-6 border-b border-gray-100">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary-600 to-primary-800 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">AI</span>
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold text-gray-900">Document AI</h1>
-              <p className="text-xs text-gray-500">Intelligent Processing</p>
-            </div>
-          </div>
+        <div className="flex h-16 items-center px-5 border-b border-slate-100">
+          <Brand />
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Menu</p>
           {navigation.map((item) => {
             const isActive = location.pathname === item.href;
+            const Icon = item.icon;
             return (
               <Link
                 key={item.name}
                 to={item.href}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                className={`group relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isActive
                     ? 'bg-primary-50 text-primary-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <span className="text-lg">{item.icon}</span>
+                {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-primary-600" />}
+                <Icon className={`h-5 w-5 ${isActive ? 'text-primary-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
                 <span>{item.name}</span>
               </Link>
             );
@@ -77,14 +85,14 @@ function Sidebar() {
         </nav>
 
         {/* User Profile */}
-        <div className="p-4 border-t border-gray-100">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-              <span className="text-gray-600 text-sm">👤</span>
+        <div className="p-4 border-t border-slate-100">
+          <div className="flex items-center gap-3 rounded-lg px-2 py-1.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100">
+              <User className="h-4 w-4 text-slate-500" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-900">User</p>
-              <p className="text-xs text-gray-500">Admin</p>
+              <p className="text-sm font-medium text-slate-900">User</p>
+              <p className="text-xs text-slate-500">Admin</p>
             </div>
           </div>
         </div>

@@ -9,16 +9,18 @@ import Review from './pages/Review'
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-slate-50">
         <Sidebar />
-        <main className="lg:ml-64 p-4 lg:p-8 transition-all duration-300">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/upload" element={<Upload />} />
-            <Route path="/documents" element={<Documents />} />
-            <Route path="/invoice/:documentId" element={<InvoiceDetails />} />
-            <Route path="/review/:documentId" element={<Review />} />
-          </Routes>
+        <main className="lg:ml-64 px-4 py-6 sm:px-6 lg:px-10 lg:py-10 transition-all duration-300">
+          <div className="mx-auto max-w-7xl">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/upload" element={<Upload />} />
+              <Route path="/documents" element={<Documents />} />
+              <Route path="/invoice/:documentId" element={<InvoiceDetails />} />
+              <Route path="/review/:documentId" element={<Review />} />
+            </Routes>
+          </div>
         </main>
       </div>
     </Router>
