@@ -6,8 +6,8 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Upload', href: '/upload', icon: Upload },
   { name: 'Documents', href: '/documents', icon: FileText },
-  { name: 'Processing', href: '/', icon: Cog },
-  { name: 'Results', href: '/', icon: CheckCircle2 },
+  //{ name: 'Processing', href: '/', icon: Cog },
+  //{ name: 'Results', href: '/', icon: CheckCircle2 },
 ];
 
 function Brand() {
@@ -34,12 +34,12 @@ function Sidebar() {
       <div className="lg:hidden sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur">
         <Brand />
         <button
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} //toggles ON and OFF
           aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
           className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
         >
-          {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+          {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}  
+        </button> //ffefef
       </div>
 
       {/* Mobile overlay */}
