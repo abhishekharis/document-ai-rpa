@@ -102,3 +102,32 @@ class TestValidationService:
         validation = {'is_valid': False, 'errors': ['Missing field'], 'warnings': []}
         status = self.validation_service.determine_status(validation, 0.95)
         assert status == 'REJECTED'
+    
+    def _valid_fields(self, **overrides):
+        fields = {
+            'vendor_name': {'value': 'ACME Office Supplies', 'confidence': 0.95},
+            'invoice_number': {'value': 'INV-001', 'confidence': 0.95},
+            'invoice_date': {'value': '2024-01-01', 'confidence': 0.95},
+            'total': {'value': 100.00, 'confidence': 0.95},
+            'currency': {'value': 'USD', 'confidence': 0.95}
+        }
+        fields.update(overrides)
+        return fields
+    
+    def test_suspicious_vendor_name_warns(self):
+        fields = self._valid_fields(vendor_name={'value': 'INVOICE Invoice Number', 'confidence': 0.99})
+        result = self.validation_service.validate(fields)
+        assert result['is_valid'] is True
+        assert any('vendor' in warning.lower() for warning in result['warnings'])
+        assert self.validation_service.determine_status(result, 0.95) == 'NEEDS_REVIEW'
+    
+    def test_suspicious_invoice_number_warns(self):
+        fields = self._valid_fields(invoice_number={'value': 'TX 75201', 'confidence': 0.99})
+        result = self.validation_service.validate(fields)
+        assert result['is_valid'] is True
+        assert any('invoice number' in warning.lower() for warning in result['warnings'])
+        assert self.validation_service.determine_status(result, 0.95) == 'NEEDS_REVIEW'
+    
+    def test_plausible_values_do_not_warn(self):
+        result = self.validation_service.validate(self._valid_fields())
+        assert result['warnings'] == []

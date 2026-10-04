@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from app.utils.validators import (
-    validate_date_sequence, validate_amounts, parse_date
+    validate_date_sequence, validate_amounts, parse_date,
+    is_plausible_vendor_name, is_plausible_invoice_number
 )
 import logging
 
@@ -43,6 +44,17 @@ class ValidationService:
                 errors.append(f"Missing required field: {field}")
             elif not extracted_fields[field]['value']:
                 errors.append(f"Empty required field: {field}")
+        
+        # Warn when required fields hold clearly implausible values; warnings
+        # route the document to NEEDS_REVIEW so it cannot be auto-approved
+        if 'vendor_name' in extracted_fields:
+            vendor = extracted_fields['vendor_name']['value']
+            if vendor and not is_plausible_vendor_name(vendor):
+                warnings.append(f"Suspicious vendor name: '{vendor}'")
+        if 'invoice_number' in extracted_fields:
+            invoice_number = extracted_fields['invoice_number']['value']
+            if invoice_number and not is_plausible_invoice_number(invoice_number):
+                warnings.append(f"Suspicious invoice number: '{invoice_number}'")
         
         # Check confidence thresholds
         for field_name, field_data in extracted_fields.items():
