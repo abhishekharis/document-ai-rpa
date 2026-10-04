@@ -1,7 +1,9 @@
 import re
 from typing import Dict, Any, Optional, Tuple
 import logging
-from app.utils.validators import parse_date, parse_amount
+from app.utils.validators import (
+    parse_date, parse_amount, is_plausible_vendor_name, is_plausible_invoice_number
+)
 
 logger = logging.getLogger(__name__)
 
@@ -10,18 +12,24 @@ class InvoiceExtractor:
     """Extract structured invoice fields from OCR text."""
     
     def __init__(self):
-        # Patterns for invoice number
+        # Patterns for invoice number; labelled values must contain a digit so a
+        # heading like "INVOICE" doesn't consume the "Invoice Number:" label after it
+        labelled_number = r'([A-Z0-9\-]*\d[A-Z0-9\-]*)'
         self.invoice_number_patterns = [
-            r'(?:invoice\s*(?:no|number|#)?[:\s]*)([A-Z0-9\-]+)',
-            r'(?:bill\s*(?:no|number|#)?[:\s]*)([A-Z0-9\-]+)',
-            r'(?:inv\s*#[:\s]*)([A-Z0-9\-]+)',
+            r'(?:invoice\s*(?:no|number|#)?[.:#\s]*)' + labelled_number,
+            r'(?:bill\s*(?:no|number|#)?[.:#\s]*)' + labelled_number,
+            r'(?:inv\s*#[:\s]*)' + labelled_number,
             r'([A-Z]{2,4}[-\s]?\d{4,})',  # Pattern like INV-1234
         ]
+        
+        # Month-name dates, e.g. "September 26, 2026" or "26 Sep 2026"
+        month_name_date = r'([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})'
         
         # Patterns for dates
         self.date_patterns = [
             r'(?:invoice\s*date|date|dated)[:\s]*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',
             r'(?:invoice\s*date|date|dated)[:\s]*(\d{4}[-/]\d{1,2}[-/]\d{1,2})',
+            r'(?:invoice\s*date|date|dated)[:\s]*' + month_name_date,
             r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',
         ]
         
@@ -29,19 +37,16 @@ class InvoiceExtractor:
         self.due_date_patterns = [
             r'(?:due\s*date|payment\s*due|due)[:\s]*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',
             r'(?:due\s*date|payment\s*due|due)[:\s]*(\d{4}[-/]\d{1,2}[-/]\d{1,2})',
+            r'(?:due\s*date|payment\s*due|due)[:\s]*' + month_name_date,
         ]
         
-        # Patterns for vendor name (usually at top)
-        self.vendor_patterns = [
-            r'^([A-Z][A-Za-z\s&]+(?:LLC|Inc|Corp|Ltd|Co|Company)?)',
-            r'^(from[:\s]+)([A-Z][A-Za-z\s&]+)',
-            r'(?:vendor|supplier|seller)[:\s]+([A-Z][A-Za-z\s&]+)',
-        ]
+        # Explicit vendor label, e.g. "Vendor: ACME Office Supplies"
+        self.vendor_label_pattern = r'^(?:vendor|supplier|seller|from)\b\s*:?\s*(.*)$'
         
         # Patterns for total amount
         self.total_patterns = [
-            r'(?:total|grand\s*total|amount\s*due|balance\s*due)[:\s]*[$€£¥]?([\d,]+\.?\d*)',
-            r'total[:\s]*[$€£¥]?([\d,]+\.?\d*)',
+            r'(?<!sub)(?<!sub\s)(?<!sub-)(?:total|grand\s*total|amount\s*due|balance\s*due)[:\s]*[$€£¥]?([\d,]+\.?\d*)',
+            r'(?<!sub)(?<!sub\s)(?<!sub-)total[:\s]*[$€£¥]?([\d,]+\.?\d*)',
             r'[$€£¥]([\d,]+\.?\d*)\s*(?:total|due)',
         ]
         
@@ -51,9 +56,11 @@ class InvoiceExtractor:
         ]
         
         # Patterns for tax
+        # Optional rate between label and amount, e.g. "Tax (8.25%)" or "VAT 20%:"
+        tax_rate = r'(?:\s*\([^)]*\)|\s*\d+(?:\.\d+)?\s*%)?'
         self.tax_patterns = [
-            r'(?:tax|vat|gst|hst)[:\s]*[$€£¥]?([\d,]+\.?\d*)',
-            r'(?:sales\s*tax)[:\s]*[$€£¥]?([\d,]+\.?\d*)',
+            r'(?:tax|vat|gst|hst)' + tax_rate + r'[:\s]*[$€£¥]?([\d,]+\.?\d*)',
+            r'(?:sales\s*tax)' + tax_rate + r'[:\s]*[$€£¥]?([\d,]+\.?\d*)',
         ]
         
         # Patterns for currency
@@ -127,19 +134,26 @@ class InvoiceExtractor:
         }
     
     def _extract_vendor(self, text: str, raw_results: list) -> Tuple[Optional[str], float]:
-        """Extract vendor name."""
-        lines = text.split('\n')
+        """Extract vendor name from an explicit label, else the first name-like line in the header."""
+        # OCR boxes are real lines; the joined OCR text puts a whole page on one line
+        if raw_results:
+            lines = [(r.get('text', '').strip(), r.get('confidence', 0.7)) for r in raw_results]
+        else:
+            lines = [(line.strip(), None) for line in text.split('\n')]
         
-        for i, line in enumerate(lines[:5]):  # Check first 5 lines
-            for pattern in self.vendor_patterns:
-                match = re.search(pattern, line, re.IGNORECASE)
-                if match:
-                    vendor = match.group(1) if match.lastindex == 1 else match.group(2)
-                    vendor = vendor.strip()
-                    if len(vendor) > 2:  # Minimum length
-                        # Find corresponding OCR confidence
-                        conf = self._find_confidence_for_text(vendor, raw_results)
-                        return vendor, conf
+        for i, (line, conf) in enumerate(lines):
+            match = re.match(self.vendor_label_pattern, line, re.IGNORECASE)
+            if not match:
+                continue
+            vendor = match.group(1).strip()
+            if not vendor and i + 1 < len(lines):
+                vendor, conf = lines[i + 1]
+            if is_plausible_vendor_name(vendor):
+                return vendor, conf if conf is not None else self._find_confidence_for_text(vendor, raw_results)
+        
+        for line, conf in lines[:6]:
+            if is_plausible_vendor_name(line):
+                return line, conf if conf is not None else self._find_confidence_for_text(line, raw_results)
         
         return None, 0.0
     
@@ -148,11 +162,10 @@ class InvoiceExtractor:
         text_lower = text.lower()
         
         for pattern in self.invoice_number_patterns:
-            match = re.search(pattern, text_lower, re.IGNORECASE)
-            if match:
+            for match in re.finditer(pattern, text_lower, re.IGNORECASE):
                 invoice_num = match.group(1).strip().upper()
                 # Validate format (should have at least one letter and one number)
-                if re.search(r'[A-Z]', invoice_num) and re.search(r'\d', invoice_num):
+                if re.search(r'[A-Z]', invoice_num) and is_plausible_invoice_number(invoice_num):
                     conf = self._find_confidence_for_text(invoice_num, raw_results)
                     return invoice_num, conf
         

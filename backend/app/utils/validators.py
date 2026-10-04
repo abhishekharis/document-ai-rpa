@@ -31,12 +31,17 @@ def parse_date(date_str: str) -> Optional[str]:
         "%m/%d/%Y",
         "%Y%m%d",
         "%d %b %Y",
+        "%d %B %Y",
         "%b %d, %Y",
+        "%B %d, %Y",
+        "%b %d %Y",
+        "%B %d %Y",
     ]
+    cleaned = " ".join(date_str.split())
     
     for fmt in date_formats:
         try:
-            parsed = datetime.strptime(date_str, fmt)
+            parsed = datetime.strptime(cleaned, fmt)
             return parsed.strftime("%Y-%m-%d")
         except ValueError:
             continue
@@ -90,6 +95,31 @@ def validate_amounts(subtotal: Optional[float], tax: Optional[float], total: flo
     
     calculated_total = (subtotal or 0) + (tax or 0)
     return abs(calculated_total - total) <= tolerance
+
+
+DOCUMENT_LABEL_WORDS = {
+    "invoice", "receipt", "statement", "quote", "estimate", "bill", "number",
+    "date", "due", "total", "subtotal", "tax", "amount", "description", "quantity", "page",
+}
+
+
+def is_plausible_vendor_name(name: Optional[str]) -> bool:
+    """Reject values that are document labels or address lines rather than a business name."""
+    if not name or not 3 <= len(name.strip()) <= 80:
+        return False
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9&.,'’\- ]*", name.strip()):
+        return False
+    if re.search(r"\d{3,}", name):
+        return False
+    words = set(re.findall(r"[a-z]+", name.lower()))
+    return not words & DOCUMENT_LABEL_WORDS
+
+
+def is_plausible_invoice_number(value: Optional[str]) -> bool:
+    """Reject values without digits or that look like a US state + ZIP code (e.g. 'TX 75201')."""
+    if not value or not 3 <= len(value.strip()) <= 30 or not re.search(r"\d", value):
+        return False
+    return not re.fullmatch(r"[A-Z]{2}\s?\d{5}(?:-\d{4})?", value.strip(), re.IGNORECASE)
 
 
 def sanitize_string(s: str) -> str:

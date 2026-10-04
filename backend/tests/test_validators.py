@@ -24,6 +24,15 @@ class TestDateParsing:
     def test_parse_date_empty(self):
         assert parse_date("") is None
 
+    def test_parse_date_full_month_name(self):
+        assert parse_date("September 26, 2026") == "2026-09-26"
+
+    def test_parse_date_month_name_without_comma(self):
+        assert parse_date("Sep 26 2026") == "2026-09-26"
+
+    def test_parse_date_day_first_full_month_name(self):
+        assert parse_date("26 September 2026") == "2026-09-26"
+
 
 class TestAmountParsing:
     def test_parse_amount_with_dollar(self):
