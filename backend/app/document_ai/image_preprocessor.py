@@ -90,11 +90,11 @@ class ImagePreprocessor:
             rect = cv2.minAreaRect(largest_contour)
             angle = rect[2]
             
-            # Normalize angle (-90 to 90)
-            if angle < -45:
-                angle = -(90 + angle)
-            else:
-                angle = -angle
+            # Normalize to the rotation that straightens the page (-45 to 45)
+            if angle < 0:  # OpenCV < 4.5 reports angles in [-90, 0)
+                angle = -(90 + angle) if angle < -45 else -angle
+            elif angle > 45:  # OpenCV >= 4.5 reports angles in (0, 90]
+                angle -= 90
             
             # Only rotate if angle is significant (>1 degree)
             if abs(angle) > 1:
