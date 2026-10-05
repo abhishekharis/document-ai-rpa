@@ -368,6 +368,15 @@ See `sample_documents/README.md` for details.
 
 ## Troubleshooting
 
+### Create a Verified Local Backup
+
+1. Pause the backend and RPA worker so the database and file archive are consistent; leave MongoDB running.
+2. From the project root, run `bash ./backup_project_data.sh`.
+3. Backups are stored in `~/Backups/document-ai-rpa/<UTC timestamp>/` by default. Each folder contains `mongodb.archive.gz`, `documents.tar.gz`, and `SHA256SUMS`. The script verifies both archives and keeps the seven most recent managed backups.
+4. Verify a backup with `cd ~/Backups/document-ai-rpa/<timestamp> && shasum -a 256 -c SHA256SUMS`.
+
+Backups contain invoice data. The script restricts file permissions but does not encrypt archives; use an encrypted disk or FileVault. For restore guidance and WiredTiger recovery, see [the MongoDB recovery guide](docs/investigation-mongodb-wiredtiger-checksum-error.md).
+
 ### MongoDB Connection Failed
 - Ensure MongoDB is running: `docker-compose ps`
 - Check MongoDB URI in `.env`
