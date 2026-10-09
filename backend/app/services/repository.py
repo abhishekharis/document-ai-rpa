@@ -162,6 +162,40 @@ class InvoiceRepository:
             duplicates.append(Invoice(**doc))
         return duplicates
     
+    async def queue_for_rpa(self, document_id: str) -> bool:
+        """Move an APPROVED invoice to RPA_QUEUED and set its RPA metadata in one conditional update."""
+        now = datetime.utcnow()
+        result = await self.collection.update_one(
+            {"document_id": document_id, "status": InvoiceStatus.APPROVED.value},
+            {
+                "$set": {
+                    "status": InvoiceStatus.RPA_QUEUED.value,
+                    "rpa": RPAStatus(
+                        eligible=True,
+                        status="QUEUED",
+                        message="Awaiting RPA processing",
+                        queued_at=now
+                    ).model_dump(),
+                    "updated_at": now
+                }
+            }
+        )
+        return result.modified_count > 0
+
+    async def update_review(self, document_id: str, reviewed_by: str) -> bool:
+        """Record who reviewed an invoice and when."""
+        now = datetime.utcnow()
+        result = await self.collection.update_one(
+            {"document_id": document_id},
+            {
+                "$set": {
+                    "review": Review(required=False, reviewed_by=reviewed_by, reviewed_at=now).model_dump(),
+                    "updated_at": now
+                }
+            }
+        )
+        return result.modified_count > 0
+
     async def get_rpa_queue(self) -> List[Invoice]:
         """Get all invoices in RPA queue."""
         cursor = self.collection.find({

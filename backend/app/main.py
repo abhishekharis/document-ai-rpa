@@ -137,6 +137,20 @@ async def upload_invoice(
     return UploadResponse(document_id=document_id, status=final_status.value)
 
 
+async def queue_approved_invoice(repo: InvoiceRepository, document_id: str) -> bool:
+    """Queue an APPROVED invoice for RPA and log it. Returns False if it was no longer APPROVED."""
+    if not await repo.queue_for_rpa(document_id):
+        return False
+    await repo.create_audit_log(AuditLog(
+        document_id=document_id,
+        event="RPA_QUEUED",
+        old_status=InvoiceStatus.APPROVED.value,
+        new_status=InvoiceStatus.RPA_QUEUED.value,
+        message="Document queued for RPA processing"
+    ))
+    return True
+
+
 async def run_processing(
     repo: InvoiceRepository,
     processing_service: ProcessingService,
@@ -192,24 +206,9 @@ async def run_processing(
                 message="Document automatically approved after successful processing"
             ))
             
-            # Transition to RPA_QUEUED
-            await repo.update_status(document_id, InvoiceStatus.RPA_QUEUED, InvoiceStatus.APPROVED)
-            await repo.create_audit_log(AuditLog(
-                document_id=document_id,
-                event="RPA_QUEUED",
-                message="Document queued for RPA processing"
-            ))
-            
-            # Update RPA status
-            from datetime import datetime
-            await repo.update_rpa_status(document_id, {
-                "eligible": True,
-                "status": "QUEUED",
-                "message": "Awaiting RPA processing",
-                "queued_at": datetime.utcnow().isoformat()
-            })
-            
-            return InvoiceStatus.RPA_QUEUED
+            if await queue_approved_invoice(repo, document_id):
+                return InvoiceStatus.RPA_QUEUED
+            return InvoiceStatus.APPROVED
         
         return final_status
         
@@ -237,17 +236,17 @@ async def get_invoices(
     """Get all invoices, optionally filtered by status."""
     repo = InvoiceRepository(database)
     
-    status = None
+    invoice_status = None
     if status_filter:
         try:
-            status = InvoiceStatus(status_filter.upper())
+            invoice_status = InvoiceStatus(status_filter.upper())
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid status: {status_filter}"
             )
     
-    invoices = await repo.get_all(status=status, limit=limit)
+    invoices = await repo.get_all(status=invoice_status, limit=limit)
     
     return InvoiceListResponse(
         invoices=[InvoiceResponse(**inv.model_dump()) for inv in invoices],
@@ -463,37 +462,31 @@ async def approve_invoice(
             detail=error_msg
         )
     
-    # Update status
-    success = await repo.update_status(document_id, InvoiceStatus.APPROVED, invoice.status)
-    if not success:
+    # An invoice already APPROVED (e.g. queueing previously failed) skips straight to queueing
+    if invoice.status != InvoiceStatus.APPROVED:
+        success = await repo.update_status(document_id, InvoiceStatus.APPROVED, invoice.status)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Invoice status changed; not approved"
+            )
+
+        await repo.update_review(document_id, request.reviewed_by)
+
+        await repo.create_audit_log(AuditLog(
+            document_id=document_id,
+            event="APPROVED",
+            actor=request.reviewed_by,
+            old_status=invoice.status.value,
+            new_status=InvoiceStatus.APPROVED.value,
+            message=request.notes
+        ))
+
+    if not await queue_approved_invoice(repo, document_id):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to approve invoice"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Invoice approved but could not be queued for RPA; approve again to retry"
         )
-    
-    # Update review info
-    from datetime import datetime
-    await repo.update(document_id, InvoiceUpdate(
-        vendor=invoice.vendor,
-        invoice_number=invoice.invoice_number,
-        invoice_date=invoice.invoice_date,
-        due_date=invoice.due_date,
-        currency=invoice.currency,
-        subtotal=invoice.subtotal,
-        tax=invoice.tax,
-        total=invoice.total,
-        line_items=invoice.line_items
-    ))
-    
-    # Log approval event
-    await repo.create_audit_log(AuditLog(
-        document_id=document_id,
-        event="APPROVED",
-        actor=request.reviewed_by,
-        old_status=invoice.status.value,
-        new_status=InvoiceStatus.APPROVED.value,
-        message=request.notes
-    ))
     
     # Get updated invoice
     updated = await repo.get_by_document_id(document_id)

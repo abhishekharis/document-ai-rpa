@@ -1,40 +1,42 @@
+import uuid
+
 import pytest
-import asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
+from fastapi.testclient import TestClient
+from pymongo import MongoClient
+
 from app.config import settings
+from app.database import db
+from app.main import app
 
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="session")
-async def test_database():
-    """Create a test database connection."""
-    # Use a separate test database
-    test_client = AsyncIOMotorClient(settings.mongodb_uri)
-    test_db = test_client[settings.mongodb_database + "_test"]
-    
-    yield test_db
-    
-    # Cleanup
-    await test_client.drop_database(settings.mongodb_database + "_test")
-    test_client.close()
+TEST_RPA_API_KEY = "test-rpa-key"
 
 
 @pytest.fixture
-async def clean_database(test_database):
-    """Clean database before each test."""
-    # Clean collections
-    await test_database.invoices.delete_many({})
-    await test_database.audit_logs.delete_many({})
-    
-    yield test_database
-    
-    # Clean up after test
-    await test_database.invoices.delete_many({})
-    await test_database.audit_logs.delete_many({})
+def test_db_name(monkeypatch):
+    """Point the app at a unique, disposable database and a test-only RPA key."""
+    name = f"{settings.mongodb_database}_test_{uuid.uuid4().hex[:8]}"
+    monkeypatch.setattr(settings, "mongodb_database", name)
+    monkeypatch.setattr(settings, "rpa_api_key", TEST_RPA_API_KEY)
+    sync_client = MongoClient(settings.mongodb_uri)
+    yield name
+    sync_client.drop_database(name)
+    sync_client.close()
+
+
+@pytest.fixture
+def mongo(test_db_name):
+    """Synchronous handle on the test database for seeding and assertions."""
+    sync_client = MongoClient(settings.mongodb_uri)
+    yield sync_client[test_db_name]
+    sync_client.close()
+
+
+@pytest.fixture
+def client(test_db_name):
+    """API client whose lifespan connects to the disposable test database only."""
+    db.client = None
+    db.database = None
+    with TestClient(app) as test_client:
+        yield test_client
+    db.client = None
+    db.database = None

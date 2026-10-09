@@ -62,22 +62,25 @@ function Review() {
     }));
   };
 
+  const saveCorrections = () =>
+    invoiceAPI.update(documentId, {
+      vendor: { name: formData.vendor_name },
+      invoice_number: formData.invoice_number,
+      invoice_date: formData.invoice_date,
+      due_date: formData.due_date,
+      currency: formData.currency,
+      subtotal: formData.subtotal ? parseFloat(formData.subtotal) : null,
+      tax: formData.tax ? parseFloat(formData.tax) : null,
+      total: formData.total ? parseFloat(formData.total) : null,
+      line_items: [],
+    });
+
   const handleSave = async () => {
     setSubmitting(true);
     setError('');
 
     try {
-      await invoiceAPI.update(documentId, {
-        vendor: { name: formData.vendor_name },
-        invoice_number: formData.invoice_number,
-        invoice_date: formData.invoice_date,
-        due_date: formData.due_date,
-        currency: formData.currency,
-        subtotal: formData.subtotal ? parseFloat(formData.subtotal) : null,
-        tax: formData.tax ? parseFloat(formData.tax) : null,
-        total: formData.total ? parseFloat(formData.total) : null,
-        line_items: [],
-      });
+      await saveCorrections();
       alert('Changes saved successfully!');
     } catch (err) {
       setError('Failed to save changes.');
@@ -95,15 +98,20 @@ function Review() {
     setSubmitting(true);
     setError('');
 
+    // Save corrections first; if that fails, don't approve stale values
     try {
-      // First save any changes
-      await handleSave();
-      
-      // Then approve
+      await saveCorrections();
+    } catch (err) {
+      setError('Failed to save changes. The invoice was not approved.');
+      setSubmitting(false);
+      return;
+    }
+
+    try {
       await invoiceAPI.approve(documentId, reviewedBy, notes);
       navigate(`/invoice/${documentId}`);
     } catch (err) {
-      setError('Failed to approve invoice.');
+      setError(err.response?.data?.detail || 'Failed to approve invoice.');
       setSubmitting(false);
     }
   };
