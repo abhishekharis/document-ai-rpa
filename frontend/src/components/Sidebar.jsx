@@ -31,6 +31,7 @@ function Sidebar() {
   return (
     <>
       {/* Mobile top bar */}
+      {/*Display a button to open and close the menu */}
       <div className="lg:hidden sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur">
         <Brand />
         <button
@@ -38,11 +39,13 @@ function Sidebar() {
           aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
           className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
         >
-          {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}  
-        </button> //ffefef
+          {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}  {/* if Menu Open -> show option to close it. if Menu closed -> show option to open it*/}
+        </button>
       </div>
 
-      {/* Mobile overlay */}
+      {/*Mobile Overlay */}
+      {/*When Menu is Open, an overlay appears behind the Menu*/}
+      {/*When clicked on the overlay the menu disappears */}
       {isMobileMenuOpen && (
         <div
           className="lg:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40"
@@ -51,6 +54,8 @@ function Sidebar() {
       )}
 
       {/* Sidebar */}
+      {/*If Menu Open, side bar remains in its normal position (visible) */}
+      {/*If Menu Close, side bar moves off screen */}
       <div className={`fixed left-0 top-0 h-full bg-white border-r border-slate-200 flex flex-col z-50 transition-transform duration-300 ease-in-out ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       } w-64`}>
