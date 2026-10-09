@@ -3,6 +3,9 @@ from typing import List
 import os
 from pathlib import Path
 
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = BACKEND_DIR.parent
+
 
 class Settings(BaseSettings):
     # MongoDB
@@ -28,10 +31,11 @@ class Settings(BaseSettings):
     cors_origins: List[str] = ["http://localhost:3000", "http://localhost:5173"]
     
     class Config:
-        # Try to load .env from parent directory first, then current directory
+        # Later files take priority, so the shared project-root .env wins over backend/.env,
+        # matching the RPA processor. Real environment variables override both.
         env_file = [
-            str(Path(__file__).parent.parent / ".env"),  # Project root .env
-            ".env"  # Current directory .env
+            str(BACKEND_DIR / ".env"),
+            str(PROJECT_ROOT / ".env"),
         ]
         env_file_encoding = "utf-8"
         case_sensitive = False

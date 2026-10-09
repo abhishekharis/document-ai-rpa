@@ -36,6 +36,21 @@ document-ai-rpa/
 Both services now locate `document-ai-rpa/.env` and therefore use the same
 `RPA_API_KEY` and related settings.
 
+## Follow-up: the first fix pointed one level too shallow
+
+The RPA processor rejected every queue job with `401 Unauthorized`. The
+backend's "project root" path was built as `Path(__file__).parent.parent`
+from `backend/app/config.py`, which is `backend/`, not the project root. With
+no `backend/.env`, the backend silently fell back to the default
+`RPA_API_KEY`, while the RPA processor read the real key from the root
+`.env`. The keys never matched.
+
+The path is now resolved from `backend/` up one more level to the project
+root. Both files are listed explicitly, with the root `.env` taking priority
+over an optional `backend/.env` (the same order the RPA processor uses), and
+real environment variables override both. A regression test checks the
+resolved path, so this can't drift silently again.
+
 ## Takeaways
 
 - **Startup directory and `.env` location don't have to match** — as long as
@@ -43,3 +58,6 @@ Both services now locate `document-ai-rpa/.env` and therefore use the same
 - **Missing `.env` fails silently.** `pydantic_settings` falls back to
   defaults, so services appear to run fine while using wrong values — a
   subtle config bug, not a crash.
+- **Verify the fix, not just the code.** The first fix looked right but never
+  actually loaded the root file. Checking that the backend and RPA processor
+  resolve the *same* key would have caught it immediately.
