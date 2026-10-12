@@ -257,3 +257,185 @@ class TestRPAEndpoints:
         assert doc["rpa"]["status"] == "COMPLETED"
         assert doc["rpa"]["job_id"] == f"JOB-{document_id}"
         assert audit_events(mongo, document_id) == ["APPROVED", "RPA_QUEUED", "RPA_STARTED", "RPA_COMPLETED"]
+
+
+class TestRejectionWorkflow:
+    def test_reject_invoice_success(self, client, mongo):
+        document_id = seed_invoice(mongo, status=InvoiceStatus.NEEDS_REVIEW)
+        rejection_data = {
+            "document_id": document_id,
+            "reviewed_by": "Senior Reviewer",
+            "reason": "Amount mismatch on line items",
+        }
+        response = client.post(f"/api/invoices/{document_id}/reject", json=rejection_data)
+        assert response.status_code == 200
+        assert response.json()["status"] == "REJECTED"
+
+        doc = mongo.invoices.find_one({"document_id": document_id})
+        assert doc["status"] == "REJECTED"
+
+        events = audit_events(mongo, document_id)
+        assert "REJECTED" in events
+        reject_log = mongo.audit_logs.find_one({"document_id": document_id, "event": "REJECTED"})
+        assert reject_log["actor"] == "Senior Reviewer"
+        assert reject_log["message"] == "Amount mismatch on line items"
+
+        # Rejected invoices must not be in RPA queue
+        queue = client.get("/api/rpa/queue").json()
+        assert document_id not in [inv["document_id"] for inv in queue["invoices"]]
+
+    def test_cannot_reject_approved_or_completed_invoice(self, client, mongo):
+        doc_approved = seed_invoice(mongo, document_id="DOC-APP01", status=InvoiceStatus.APPROVED)
+        res1 = client.post(
+            f"/api/invoices/{doc_approved}/reject",
+            json={"document_id": doc_approved, "reviewed_by": "Reviewer", "reason": "Too late"},
+        )
+        assert res1.status_code == 400
+        assert "Invalid transition" in res1.json()["detail"]
+
+        doc_completed = seed_invoice(mongo, document_id="DOC-COMP01", status=InvoiceStatus.RPA_COMPLETED)
+        res2 = client.post(
+            f"/api/invoices/{doc_completed}/reject",
+            json={"document_id": doc_completed, "reviewed_by": "Reviewer", "reason": "Already done"},
+        )
+        assert res2.status_code == 400
+
+
+class TestBulkDeleteWorkflow:
+    def test_bulk_delete_eligible_invoices_removes_docs_and_files_keeps_audit(self, client, mongo, tmp_path, monkeypatch):
+        monkeypatch.setattr(main.file_storage, "documents_path", tmp_path)
+
+        doc1 = seed_invoice(mongo, document_id="DOC-DEL01", status=InvoiceStatus.REJECTED)
+        doc2 = seed_invoice(mongo, document_id="DOC-DEL02", status=InvoiceStatus.APPROVED)
+
+        # Save files
+        main.file_storage.save_original(doc1, "invoice1.pdf", b"%PDF-1.4 file1")
+        main.file_storage.save_original(doc2, "invoice2.pdf", b"%PDF-1.4 file2")
+        assert main.file_storage.get_original_file(doc1) is not None
+        assert main.file_storage.get_original_file(doc2) is not None
+
+        response = client.post("/api/invoices/bulk-delete", json={"document_ids": [doc1, doc2]})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["succeeded"] == 2
+        assert data["failed"] == 0
+
+        # MongoDB records removed
+        assert mongo.invoices.find_one({"document_id": doc1}) is None
+        assert mongo.invoices.find_one({"document_id": doc2}) is None
+
+        # Files on disk removed
+        assert main.file_storage.get_original_file(doc1) is None
+        assert main.file_storage.get_original_file(doc2) is None
+
+        # Audit logs preserved
+        assert "DOCUMENT_DELETED" in audit_events(mongo, doc1)
+        assert "DOCUMENT_DELETED" in audit_events(mongo, doc2)
+
+    def test_bulk_delete_blocked_when_processing(self, client, mongo, tmp_path, monkeypatch):
+        monkeypatch.setattr(main.file_storage, "documents_path", tmp_path)
+
+        doc_processing = seed_invoice(mongo, document_id="DOC-PROC01", status=InvoiceStatus.PROCESSING)
+        main.file_storage.save_original(doc_processing, "proc.pdf", b"%PDF-1.4 proc")
+
+        response = client.post("/api/invoices/bulk-delete", json={"document_ids": [doc_processing]})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["succeeded"] == 0
+        assert data["failed"] == 1
+        assert "Cannot delete while status is PROCESSING" in data["results"][0]["message"]
+
+        # Invoice and file preserved
+        assert mongo.invoices.find_one({"document_id": doc_processing}) is not None
+        assert main.file_storage.get_original_file(doc_processing) is not None
+
+    def test_bulk_delete_nonexistent(self, client, mongo):
+        response = client.post("/api/invoices/bulk-delete", json={"document_ids": ["DOC-NONEXISTENT"]})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["succeeded"] == 0
+        assert data["failed"] == 1
+        assert "Document not found" in data["results"][0]["message"]
+
+
+class TestBulkReprocessWorkflow:
+    def test_bulk_reprocess_eligible_invoice_success(self, client, mongo, tmp_path, monkeypatch):
+        monkeypatch.setattr(main.file_storage, "documents_path", tmp_path)
+
+        class FakeProcessingService:
+            async def process_invoice(self, content, filename, document_id):
+                return {
+                    "vendor": {"name": "Reprocessed Vendor Inc"},
+                    "invoice_number": "INV-REPROC-99",
+                    "invoice_date": "2026-03-01",
+                    "due_date": None,
+                    "currency": "USD",
+                    "subtotal": 300.0,
+                    "tax": 24.0,
+                    "total": 324.0,
+                    "extraction": {"overall_confidence": 0.98, "fields": {}, "raw_ocr_text": "", "page_count": 1},
+                    "validation": {"is_valid": True, "errors": [], "warnings": []},
+                    "status": "PROCESSED",
+                }
+
+        monkeypatch.setattr(main, "ProcessingService", FakeProcessingService)
+
+        doc_id = seed_invoice(mongo, document_id="DOC-REPROC01", status=InvoiceStatus.REJECTED)
+        main.file_storage.save_original(doc_id, "invoice.pdf", b"%PDF-1.4 reprocess content")
+
+        response = client.post("/api/invoices/bulk-reprocess", json={"document_ids": [doc_id]})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["succeeded"] == 1
+        assert data["failed"] == 0
+        assert data["results"][0]["status"] == "RPA_QUEUED"
+        assert "Reprocessed" in data["results"][0]["message"]
+
+        # Check document in Mongo
+        doc = mongo.invoices.find_one({"document_id": doc_id})
+        assert doc["status"] == "RPA_QUEUED"
+        assert doc["vendor"]["name"] == "Reprocessed Vendor Inc"
+        assert doc["invoice_number"] == "INV-REPROC-99"
+
+        # Check audit trail
+        events = audit_events(mongo, doc_id)
+        assert "REPROCESS_STARTED" in events
+        assert "PROCESSING_COMPLETE" in events
+        assert "AUTO_APPROVED" in events
+        assert "RPA_QUEUED" in events
+
+        # Appears in RPA queue
+        queue = client.get("/api/rpa/queue").json()
+        assert doc_id in [inv["document_id"] for inv in queue["invoices"]]
+
+    def test_bulk_reprocess_ineligible_status_blocked(self, client, mongo, tmp_path, monkeypatch):
+        monkeypatch.setattr(main.file_storage, "documents_path", tmp_path)
+
+        doc_completed = seed_invoice(mongo, document_id="DOC-COMP02", status=InvoiceStatus.RPA_COMPLETED)
+        main.file_storage.save_original(doc_completed, "comp.pdf", b"%PDF-1.4 comp")
+
+        response = client.post("/api/invoices/bulk-reprocess", json={"document_ids": [doc_completed]})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["succeeded"] == 0
+        assert data["failed"] == 1
+        assert "Not eligible for reprocessing" in data["results"][0]["message"]
+
+        # Status unchanged
+        doc = mongo.invoices.find_one({"document_id": doc_completed})
+        assert doc["status"] == "RPA_COMPLETED"
+
+    def test_bulk_reprocess_missing_original_file(self, client, mongo, tmp_path, monkeypatch):
+        monkeypatch.setattr(main.file_storage, "documents_path", tmp_path)
+
+        doc_nofile = seed_invoice(mongo, document_id="DOC-NOFILE01", status=InvoiceStatus.REJECTED)
+
+        response = client.post("/api/invoices/bulk-reprocess", json={"document_ids": [doc_nofile]})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["succeeded"] == 0
+        assert data["failed"] == 1
+        assert "Original file not found" in data["results"][0]["message"]
+
+        doc = mongo.invoices.find_one({"document_id": doc_nofile})
+        assert doc["status"] == "REJECTED"
