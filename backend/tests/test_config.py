@@ -24,3 +24,29 @@ def test_root_env_overrides_backend_env(tmp_path, monkeypatch):
     settings = Settings(_env_file=[str(backend_env), str(root_env)])
 
     assert settings.rpa_api_key == "from-root"
+
+
+def test_development_allows_default_settings():
+    Settings(_env_file=None, environment="development")
+
+
+def test_production_rejects_default_rpa_key():
+    import pytest
+    with pytest.raises(ValueError, match="RPA_API_KEY"):
+        Settings(_env_file=None, environment="production", cors_origins=["https://app.example.com"])
+
+
+def test_production_rejects_localhost_cors():
+    import pytest
+    with pytest.raises(ValueError, match="CORS_ORIGINS"):
+        Settings(_env_file=None, environment="production", rpa_api_key="x" * 32)
+
+
+def test_production_accepts_safe_settings():
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        rpa_api_key="x" * 32,
+        cors_origins=["https://app.example.com"],
+    )
+    assert settings.environment == "production"

@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from typing import List
 import os
@@ -7,7 +8,13 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BACKEND_DIR.parent
 
 
+INSECURE_RPA_KEYS = {"", "change-me", "change-me-in-production"}
+
+
 class Settings(BaseSettings):
+    # Deployment environment: development, staging or production
+    environment: str = "development"
+    
     # MongoDB
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "document_ai_rpa"
@@ -29,6 +36,20 @@ class Settings(BaseSettings):
     
     # CORS
     cors_origins: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    
+    @model_validator(mode="after")
+    def validate_deployed_settings(self):
+        """Refuse to start a staging/production deployment with unsafe defaults."""
+        if self.environment == "development":
+            return self
+        problems = []
+        if self.rpa_api_key in INSECURE_RPA_KEYS or len(self.rpa_api_key) < 16:
+            problems.append("RPA_API_KEY must be set to a secret of at least 16 characters")
+        if any("localhost" in o or "127.0.0.1" in o for o in self.cors_origins):
+            problems.append("CORS_ORIGINS must not contain localhost origins")
+        if problems:
+            raise ValueError(f"Invalid {self.environment} configuration: " + "; ".join(problems))
+        return self
     
     class Config:
         # Later files take priority, so the shared project-root .env wins over backend/.env,
