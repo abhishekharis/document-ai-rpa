@@ -375,6 +375,12 @@ See `sample_documents/README.md` for details.
 3. Backups are stored in `~/Backups/document-ai-rpa/<UTC timestamp>/` by default. Each folder contains `mongodb.archive.gz`, `documents.tar.gz`, and `SHA256SUMS`. The script verifies both archives and keeps the seven most recent managed backups.
 4. Verify a backup with `cd ~/Backups/document-ai-rpa/<timestamp> && shasum -a 256 -c SHA256SUMS`.
 
+### Restore a Backup
+
+`bash ./restore_project_data.sh ~/Backups/document-ai-rpa/<timestamp>` verifies `SHA256SUMS`, then restores into a **scratch** database (`document_ai_rpa_restore`) and `<backup>/restored-documents`, so live data is never touched. It refuses to overwrite a non-empty target without `--force`.
+
+To replace live data, stop the backend and RPA worker, then run `TARGET_DATABASE=document_ai_rpa TARGET_DOCUMENTS_DIR=backend/storage/documents bash ./restore_project_data.sh <backup-dir> --force`. Test a restore into the scratch database regularly; a backup that has never been restored is unverified.
+
 Backups contain invoice data. The script restricts file permissions but does not encrypt archives; use an encrypted disk or FileVault. For restore guidance and WiredTiger recovery, see [the MongoDB recovery guide](docs/investigation-mongodb-wiredtiger-checksum-error.md).
 
 ### MongoDB Connection Failed
