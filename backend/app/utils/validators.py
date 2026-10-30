@@ -49,6 +49,9 @@ def parse_date(date_str: str) -> Optional[str]:
     return None
 
 
+CURRENCY_SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY"}
+
+
 def parse_amount(amount_str: str) -> Optional[Tuple[float, str]]:
     """
     Parse monetary value and extract currency.
@@ -60,9 +63,10 @@ def parse_amount(amount_str: str) -> Optional[Tuple[float, str]]:
     # Extract currency
     currency_match = re.search(r'[A-Z]{3}|[$€£¥]', cleaned)
     if currency_match:
-        currency = currency_match.group()
+        symbol_or_code = currency_match.group()
+        currency = CURRENCY_SYMBOLS.get(symbol_or_code, symbol_or_code)
         # Remove currency from amount string
-        cleaned = cleaned.replace(currency, "")
+        cleaned = cleaned.replace(symbol_or_code, "")
     else:
         currency = "USD"
     
@@ -90,8 +94,8 @@ def validate_date_sequence(invoice_date: str, due_date: str) -> bool:
 
 def validate_amounts(subtotal: Optional[float], tax: Optional[float], total: float, tolerance: float = 0.01) -> bool:
     """Validate that subtotal + tax ≈ total."""
-    if subtotal is None and tax is None:
-        return True  # Can't validate without subtotal/tax
+    if subtotal is None:
+        return True  # Can't validate without a subtotal
     
     calculated_total = (subtotal or 0) + (tax or 0)
     return abs(calculated_total - total) <= tolerance
