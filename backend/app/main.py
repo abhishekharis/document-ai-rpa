@@ -91,15 +91,18 @@ async def upload_invoice(
             detail=f"Invalid file type. Allowed: {', '.join(allowed_types)}"
         )
     
-    # Read file content
-    content = await file.read()
-    
-    # Validate file size
-    if not validate_file_size(len(content), settings.max_upload_size_mb):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File too large. Maximum size: {settings.max_upload_size_mb}MB"
-        )
+    # Read in chunks so an oversized upload is rejected without buffering all of it
+    chunks = []
+    total_size = 0
+    while chunk := await file.read(1024 * 1024):
+        total_size += len(chunk)
+        if not validate_file_size(total_size, settings.max_upload_size_mb):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File too large. Maximum size: {settings.max_upload_size_mb}MB"
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
     
     # Create invoice record
     repo = InvoiceRepository(database)
