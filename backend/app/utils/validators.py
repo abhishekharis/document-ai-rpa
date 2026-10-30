@@ -94,11 +94,13 @@ def validate_date_sequence(invoice_date: str, due_date: str) -> bool:
 
 def validate_amounts(subtotal: Optional[float], tax: Optional[float], total: float, tolerance: float = 0.01) -> bool:
     """Validate that subtotal + tax ≈ total."""
+    if subtotal is None and tax is None:
+        return True  # Can't validate without subtotal/tax
     if subtotal is None:
-        return True  # Can't validate without a subtotal
+        # Without a subtotal the sum can't be checked, but tax can't exceed the total
+        return tax <= total + tolerance
     
-    calculated_total = (subtotal or 0) + (tax or 0)
-    return abs(calculated_total - total) <= tolerance
+    return abs(subtotal + (tax or 0) - total) <= tolerance
 
 
 DOCUMENT_LABEL_WORDS = {
