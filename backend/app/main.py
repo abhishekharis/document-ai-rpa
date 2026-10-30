@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+import secrets
 from pathlib import Path
 from typing import Optional
 
@@ -565,7 +566,7 @@ async def start_rpa(
 ):
     """Start RPA processing for an approved invoice."""
     # Validate API key
-    if request.api_key != settings.rpa_api_key:
+    if not secrets.compare_digest(request.api_key.encode(), settings.rpa_api_key.encode()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key"
@@ -629,7 +630,7 @@ async def rpa_result(
 ):
     """Receive RPA processing result from UiPath."""
     # Validate API key
-    if request.api_key != settings.rpa_api_key:
+    if not secrets.compare_digest(request.api_key.encode(), settings.rpa_api_key.encode()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key"
