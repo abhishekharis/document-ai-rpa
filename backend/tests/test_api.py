@@ -439,3 +439,12 @@ class TestBulkReprocessWorkflow:
 
         doc = mongo.invoices.find_one({"document_id": doc_nofile})
         assert doc["status"] == "REJECTED"
+
+
+class TestRateLimiting:
+    def test_upload_rate_limit_returns_429(self, client, monkeypatch):
+        from app.main import upload_limiter
+        monkeypatch.setattr(upload_limiter, "max_requests", 2)
+        files = {"file": ("bad.txt", b"x", "text/plain")}
+        statuses = [client.post("/api/invoices/upload", files=files).status_code for _ in range(3)]
+        assert statuses == [400, 400, 429]

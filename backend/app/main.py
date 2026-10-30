@@ -23,7 +23,12 @@ from app.utils.validators import (
     validate_file_type, validate_file_size, sanitize_string
 )
 from app.validation.state_transitions import StateTransitionValidator
+from app.utils.rate_limit import RateLimiter
 from motor.motor_asyncio import AsyncIOMotorDatabase
+
+
+upload_limiter = RateLimiter(settings.upload_rate_limit_per_minute, 60)
+rpa_limiter = RateLimiter(settings.rpa_rate_limit_per_minute, 60)
 
 
 @asynccontextmanager
@@ -77,7 +82,8 @@ async def health_check(database: AsyncIOMotorDatabase = Depends(get_database)):
 
 
 # Document Upload
-@app.post("/api/invoices/upload", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/api/invoices/upload", response_model=UploadResponse, status_code=status.HTTP_201_CREATED,
+          dependencies=[Depends(upload_limiter)])
 async def upload_invoice(
     file: UploadFile = File(...),
     database: AsyncIOMotorDatabase = Depends(get_database)
@@ -561,7 +567,7 @@ async def get_rpa_queue(database: AsyncIOMotorDatabase = Depends(get_database)):
 
 
 # Start RPA Processing
-@app.post("/api/rpa/{document_id}/start", response_model=InvoiceResponse)
+@app.post("/api/rpa/{document_id}/start", response_model=InvoiceResponse, dependencies=[Depends(rpa_limiter)])
 async def start_rpa(
     document_id: str,
     request: RPAStartRequest,
@@ -625,7 +631,7 @@ async def start_rpa(
 
 
 # RPA Result Callback
-@app.post("/api/rpa/{document_id}/result", response_model=RPAResultResponse)
+@app.post("/api/rpa/{document_id}/result", response_model=RPAResultResponse, dependencies=[Depends(rpa_limiter)])
 async def rpa_result(
     document_id: str,
     request: RPAResultRequest,

@@ -6,7 +6,7 @@ from pymongo import MongoClient
 
 from app.config import settings
 from app.database import db
-from app.main import app
+from app.main import app, upload_limiter, rpa_limiter
 
 TEST_RPA_API_KEY = "test-rpa-key"
 
@@ -40,3 +40,9 @@ def client(test_db_name):
         yield test_client
     db.client = None
     db.database = None
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiters():
+    upload_limiter.reset()
+    rpa_limiter.reset()

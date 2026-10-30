@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     accounting_app_url: str = "http://localhost:3001"
     rpa_api_key: str = "change-me"
     
+    # Rate limiting (requests per minute per client IP)
+    upload_rate_limit_per_minute: int = 30
+    rpa_rate_limit_per_minute: int = 120
+    
     # CORS
     cors_origins: List[str] = ["http://localhost:3000", "http://localhost:5173"]
     
