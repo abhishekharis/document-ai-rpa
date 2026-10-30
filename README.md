@@ -107,6 +107,18 @@ ACCOUNTING_APP_URL=http://localhost:3001
 RPA_API_KEY=change-me-in-production
 ```
 
+Additional settings (see `.env.example`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENVIRONMENT` | `development` | `staging`/`production` refuse to start with a default or short (<16 chars) `RPA_API_KEY` or localhost `CORS_ORIGINS` |
+| `LOG_LEVEL` | `INFO` | Log level; logs are JSON outside development |
+| `CORS_ORIGINS` | localhost dev ports | JSON list of allowed origins, e.g. `["https://app.example.com"]` |
+| `UPLOAD_RATE_LIMIT_PER_MINUTE` | `30` | Per-IP upload limit (in-memory, single process) |
+| `RPA_RATE_LIMIT_PER_MINUTE` | `120` | Per-IP limit on the RPA start/result endpoints |
+
+See `.env.production.example` for a production starting point.
+
 ### 3. Start MongoDB
 
 Using Docker Compose (recommended):
@@ -178,6 +190,15 @@ python -m app.main
 Backend will be available at `http://127.0.0.1:8000`
 
 API Documentation: `http://127.0.0.1:8000/docs`
+
+### Run the Full Stack in Docker
+
+```bash
+export RPA_API_KEY=<a-secret-of-16+-characters>
+docker compose -f docker-compose.full.yml up --build
+```
+
+The UI is served at http://localhost:8080 and nginx proxies `/api` to the backend. The stack uses its own MongoDB container and volumes, separate from the development `docker-compose.yml`. Set `ENVIRONMENT=production` and `CORS_ORIGINS` for real deployments.
 
 ### Start Frontend
 ```bash
@@ -349,6 +370,16 @@ pytest tests/
 cd backend
 pytest tests/test_api.py
 ```
+
+The API and RPA integration tests need MongoDB running on `localhost:27017`; without it the suite hangs waiting for the database.
+
+### Coverage
+```bash
+cd backend
+pytest tests/ --cov=app --cov-report=term
+```
+
+CI (`.github/workflows/ci.yml`) runs the backend tests and the frontend build on every push to `main` and on pull requests.
 
 ### Run E2E Tests
 ```bash
