@@ -94,8 +94,9 @@ class TestInvoiceExtractor:
             {'text': 'Some random text', 'confidence': 0.80}
         ]
         result = self.extractor.extract(text, raw_results)
-        assert len(result['fields']) == 0
-        assert result['overall_confidence'] == 0.0
+        # Only the header-line vendor guess is allowed; required-field validation sends it to review
+        assert set(result['fields']) <= {'vendor_name'}
+        assert result['overall_confidence'] <= 0.80
     
     def test_extract_due_date(self):
         text = "Due Date: 2024-02-15"

@@ -51,6 +51,9 @@ class TestAmountParsing:
         result = parse_amount("€1,250.00")
         assert result == (1250.00, "EUR")
     
+    def test_parse_amount_ignores_non_currency_letters(self):
+        assert parse_amount("TOTAL 100.00") == (100.00, "USD")
+    
     def test_parse_amount_invalid(self):
         assert parse_amount("invalid") is None
     
@@ -84,6 +87,9 @@ class TestAmountValidation:
     
     def test_missing_subtotal(self):
         assert validate_amounts(None, 8.00, 108.00) is True  # Can't validate
+    
+    def test_missing_subtotal_tax_exceeds_total(self):
+        assert validate_amounts(None, 50.00, 10.00) is False
     
     def test_negative_amounts(self):
         # This is handled separately, but the math validation should still work

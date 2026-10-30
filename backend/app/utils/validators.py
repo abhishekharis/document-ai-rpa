@@ -49,6 +49,11 @@ def parse_date(date_str: str) -> Optional[str]:
     return None
 
 
+# "¥" is ambiguous (JPY/CNY); it is mapped to JPY, the more common reading
+CURRENCY_SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY"}
+CURRENCY_CODES = {"USD", "EUR", "GBP", "JPY", "CNY", "CAD", "AUD", "CHF", "INR", "MXN", "SEK", "NZD", "SGD", "HKD"}
+
+
 def parse_amount(amount_str: str) -> Optional[Tuple[float, str]]:
     """
     Parse monetary value and extract currency.
@@ -58,11 +63,16 @@ def parse_amount(amount_str: str) -> Optional[Tuple[float, str]]:
     cleaned = amount_str.replace(",", "").replace(" ", "")
     
     # Extract currency
-    currency_match = re.search(r'[A-Z]{3}|[$€£¥]', cleaned)
+    currency_match = next(
+        (m for m in re.finditer(r'[A-Z]{3}|[$€£¥]', cleaned)
+         if m.group() in CURRENCY_SYMBOLS or m.group() in CURRENCY_CODES),
+        None,
+    )
     if currency_match:
-        currency = currency_match.group()
+        symbol_or_code = currency_match.group()
+        currency = CURRENCY_SYMBOLS.get(symbol_or_code, symbol_or_code)
         # Remove currency from amount string
-        cleaned = cleaned.replace(currency, "")
+        cleaned = cleaned.replace(symbol_or_code, "")
     else:
         currency = "USD"
     
@@ -92,9 +102,11 @@ def validate_amounts(subtotal: Optional[float], tax: Optional[float], total: flo
     """Validate that subtotal + tax ≈ total."""
     if subtotal is None and tax is None:
         return True  # Can't validate without subtotal/tax
+    if subtotal is None:
+        # Without a subtotal the sum can't be checked, but tax can't exceed the total
+        return tax <= total + tolerance
     
-    calculated_total = (subtotal or 0) + (tax or 0)
-    return abs(calculated_total - total) <= tolerance
+    return abs(subtotal + (tax or 0) - total) <= tolerance
 
 
 DOCUMENT_LABEL_WORDS = {

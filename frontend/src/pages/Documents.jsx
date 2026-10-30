@@ -211,7 +211,23 @@ function Documents() {
         }
       />
 
-      {loadError && <Alert type="error" className="mb-6">{loadError}</Alert>}
+      {loadError && invoices.length > 0 && (
+        <Alert
+          type="error"
+          title={loadError}
+          onDismiss={() => setLoadError('')}
+          className="mb-6"
+        >
+          <button
+            type="button"
+            onClick={() => loadInvoices()}
+            className="btn-secondary text-xs py-1.5 px-3 mt-2 inline-flex items-center gap-1.5"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Retry
+          </button>
+        </Alert>
+      )}
 
       {/* Controls */}
       <div className="card p-4 mb-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -305,7 +321,23 @@ function Documents() {
 
       {/* Documents Table */}
       <div className="card overflow-hidden">
-        {invoices.length === 0 ? (
+        {loadError && invoices.length === 0 ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Failed to load documents"
+            description={loadError}
+            action={
+              <button
+                type="button"
+                onClick={() => loadInvoices()}
+                className="btn-secondary inline-flex items-center gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </button>
+            }
+          />
+        ) : invoices.length === 0 ? (
           <EmptyState
             icon={FileText}
             title="No documents yet"

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, Eye, CheckCircle2, AlertTriangle, Upload, ArrowRight, Sparkles } from 'lucide-react';
+import { FileText, Eye, CheckCircle2, AlertTriangle, Upload, ArrowRight, Sparkles, RefreshCw } from 'lucide-react';
 import { invoiceAPI } from '../services/api';
 import PageHeader from '../components/ui/PageHeader';
 import StatCard from '../components/ui/StatCard';
@@ -14,6 +14,7 @@ const ATTENTION_STATUSES = ['ERROR', 'REJECTED', 'RPA_FAILED'];
 function Dashboard() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [stats, setStats] = useState({
     total: 0,
     needsReview: 0,
@@ -26,6 +27,8 @@ function Dashboard() {
   }, []);
 
   const loadInvoices = async () => {
+    setLoading(true);
+    setLoadError('');
     try {
       const data = await invoiceAPI.getAll();
       setInvoices(data.invoices);
@@ -40,6 +43,7 @@ function Dashboard() {
       setStats(stats);
     } catch (error) {
       console.error('Failed to load invoices:', error);
+      setLoadError('Failed to load documents. Please check that the server is running and try again.');
     } finally {
       setLoading(false);
     }
@@ -64,10 +68,10 @@ function Dashboard() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Total Documents" value={stats.total} icon={FileText} tone="slate" />
-        <StatCard label="Needs Review" value={stats.needsReview} icon={Eye} tone="amber" />
-        <StatCard label="Needs Attention" value={stats.needsAttention} icon={AlertTriangle} tone="red" />
-        <StatCard label="RPA Completed" value={stats.rpaCompleted} icon={CheckCircle2} tone="emerald" />
+        <StatCard label="Total Documents" value={loadError ? '-' : stats.total} icon={FileText} tone="slate" />
+        <StatCard label="Needs Review" value={loadError ? '-' : stats.needsReview} icon={Eye} tone="amber" />
+        <StatCard label="Needs Attention" value={loadError ? '-' : stats.needsAttention} icon={AlertTriangle} tone="red" />
+        <StatCard label="RPA Completed" value={loadError ? '-' : stats.rpaCompleted} icon={CheckCircle2} tone="emerald" />
       </div>
 
       {/* Upload CTA */}
@@ -105,7 +109,23 @@ function Dashboard() {
           )}
         </div>
         
-        {invoices.length === 0 ? (
+        {loadError ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Failed to load documents"
+            description={loadError}
+            action={
+              <button
+                type="button"
+                onClick={loadInvoices}
+                className="btn-secondary inline-flex items-center gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </button>
+            }
+          />
+        ) : invoices.length === 0 ? (
           <EmptyState
             icon={FileText}
             title="No documents yet"
