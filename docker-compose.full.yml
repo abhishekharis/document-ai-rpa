@@ -1,0 +1,38 @@
+# Full stack: docker compose -f docker-compose.full.yml up --build
+# Requires RPA_API_KEY in the environment or a root .env file.
+services:
+  mongodb:
+    image: mongo:7.0
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      MONGODB_URI: mongodb://mongodb:27017
+      RPA_API_KEY: ${RPA_API_KEY:?set RPA_API_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:8080"]}
+    volumes:
+      - storage_data:/data/storage
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  frontend:
+    build: frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongodb_data:
+  storage_data:
