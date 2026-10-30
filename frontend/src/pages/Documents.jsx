@@ -211,7 +211,7 @@ function Documents() {
         }
       />
 
-      {loadError && (
+      {loadError && invoices.length > 0 && (
         <Alert
           type="error"
           title={loadError}
@@ -321,7 +321,7 @@ function Documents() {
 
       {/* Documents Table */}
       <div className="card overflow-hidden">
-        {loadError ? (
+        {loadError && invoices.length === 0 ? (
           <EmptyState
             icon={AlertTriangle}
             title="Failed to load documents"
