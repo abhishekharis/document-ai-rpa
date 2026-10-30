@@ -6,7 +6,11 @@ import secrets
 from pathlib import Path
 from typing import Optional
 
+import logging
+import time
+
 from app.config import settings
+from app.logging_config import configure_logging
 from app.database import db, get_database
 from app.services.repository import InvoiceRepository
 from app.services.processing_service import ProcessingService
@@ -27,6 +31,9 @@ from app.utils.rate_limit import RateLimiter
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 
+configure_logging(settings.log_level, json_logs=settings.environment != "development")
+logger = logging.getLogger(__name__)
+
 upload_limiter = RateLimiter(settings.upload_rate_limit_per_minute, 60)
 rpa_limiter = RateLimiter(settings.rpa_rate_limit_per_minute, 60)
 
@@ -38,11 +45,11 @@ async def lifespan(app: FastAPI):
     database = db.get_database()
     repo = InvoiceRepository(database)
     await repo.create_indexes()
-    print("Application startup complete")
+    logger.info("Application startup complete (environment=%s)", settings.environment)
     yield
     # Shutdown
     db.close()
-    print("Application shutdown")
+    logger.info("Application shutdown")
 
 
 app = FastAPI(
@@ -51,6 +58,15 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+@app.middleware("http")
+async def log_requests(request, call_next):
+    started = time.monotonic()
+    response = await call_next(request)
+    logger.info("%s %s -> %s (%.0f ms)", request.method, request.url.path,
+                response.status_code, (time.monotonic() - started) * 1000)
+    return response
+
 
 # CORS Middleware
 app.add_middleware(

@@ -14,6 +14,7 @@ INSECURE_RPA_KEYS = {"", "change-me", "change-me-in-production"}
 class Settings(BaseSettings):
     # Deployment environment: development, staging or production
     environment: str = "development"
+    log_level: str = "INFO"
     
     # MongoDB
     mongodb_uri: str = "mongodb://localhost:27017"
