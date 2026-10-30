@@ -7,7 +7,6 @@ import StatCard from '../components/ui/StatCard';
 import StatusBadge from '../components/ui/StatusBadge';
 import LoadingState from '../components/ui/LoadingState';
 import EmptyState from '../components/ui/EmptyState';
-import Alert from '../components/ui/Alert';
 
 // Documents that failed somewhere in the pipeline and need a user decision (e.g. reprocess)
 const ATTENTION_STATUSES = ['ERROR', 'REJECTED', 'RPA_FAILED'];
@@ -66,24 +65,6 @@ function Dashboard() {
           </Link>
         }
       />
-
-      {loadError && (
-        <Alert
-          type="error"
-          title={loadError}
-          onDismiss={() => setLoadError('')}
-          className="mb-6"
-        >
-          <button
-            type="button"
-            onClick={loadInvoices}
-            className="btn-secondary text-xs py-1.5 px-3 mt-2 inline-flex items-center gap-1.5"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Retry
-          </button>
-        </Alert>
-      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
