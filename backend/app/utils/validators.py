@@ -49,7 +49,9 @@ def parse_date(date_str: str) -> Optional[str]:
     return None
 
 
+# "¥" is ambiguous (JPY/CNY); it is mapped to JPY, the more common reading
 CURRENCY_SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY"}
+CURRENCY_CODES = {"USD", "EUR", "GBP", "JPY", "CNY", "CAD", "AUD", "CHF", "INR", "MXN", "SEK", "NZD", "SGD", "HKD"}
 
 
 def parse_amount(amount_str: str) -> Optional[Tuple[float, str]]:
@@ -61,7 +63,11 @@ def parse_amount(amount_str: str) -> Optional[Tuple[float, str]]:
     cleaned = amount_str.replace(",", "").replace(" ", "")
     
     # Extract currency
-    currency_match = re.search(r'[A-Z]{3}|[$€£¥]', cleaned)
+    currency_match = next(
+        (m for m in re.finditer(r'[A-Z]{3}|[$€£¥]', cleaned)
+         if m.group() in CURRENCY_SYMBOLS or m.group() in CURRENCY_CODES),
+        None,
+    )
     if currency_match:
         symbol_or_code = currency_match.group()
         currency = CURRENCY_SYMBOLS.get(symbol_or_code, symbol_or_code)

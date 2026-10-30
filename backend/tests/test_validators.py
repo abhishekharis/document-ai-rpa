@@ -51,6 +51,9 @@ class TestAmountParsing:
         result = parse_amount("€1,250.00")
         assert result == (1250.00, "EUR")
     
+    def test_parse_amount_ignores_non_currency_letters(self):
+        assert parse_amount("TOTAL 100.00") == (100.00, "USD")
+    
     def test_parse_amount_invalid(self):
         assert parse_amount("invalid") is None
     
