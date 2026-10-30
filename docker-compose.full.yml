@@ -1,6 +1,8 @@
 # Full stack: docker compose -f docker-compose.full.yml up --build
 # Requires RPA_API_KEY in the environment or a root .env file.
 services:
+name: document-ai-rpa-full
+
   mongodb:
     image: mongo:7.0
     volumes:
