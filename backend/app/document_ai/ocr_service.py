@@ -5,6 +5,8 @@ from paddleocr import PaddleOCR
 from typing import List, Dict, Any
 import logging
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,9 +23,12 @@ class OCRService:
         if self.paddle_ocr is None:
             logger.info("Initializing PaddleOCR")
             try:
+                # oneDNN acceleration crashes some PaddlePaddle 3.x CPU builds
+                # (ConvertPirAttribute2RuntimeAttribute), so it is off unless enabled
                 self.paddle_ocr = PaddleOCR(
                     use_angle_cls=self.use_angle_cls,
-                    lang=self.lang
+                    lang=self.lang,
+                    enable_mkldnn=settings.ocr_enable_mkldnn
                 )
             except Exception as e:
                 logger.error(f"Failed to initialize PaddleOCR: {str(e)}")

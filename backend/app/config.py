@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 10
     
     # Processing
+    ocr_enable_mkldnn: bool = False
     confidence_threshold: float = 0.80
     
     # API
