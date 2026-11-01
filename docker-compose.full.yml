@@ -24,6 +24,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:8080"]}
     volumes:
       - storage_data:/data/storage
+      - ocr_models:/root/.paddlex
     depends_on:
       mongodb:
         condition: service_healthy
@@ -63,3 +64,4 @@ volumes:
   mongodb_data:
   storage_data:
   accounting_data:
+  ocr_models:
