@@ -28,13 +28,38 @@ services:
       mongodb:
         condition: service_healthy
 
+  accounting:
+    build: simulated-accounting-app
+    environment:
+      SECRET_KEY: ${ACCOUNTING_SECRET_KEY:-demo-accounting-secret}
+    volumes:
+      - accounting_data:/data
+
+  rpa:
+    build:
+      context: .
+      dockerfile: rpa/Dockerfile
+    environment:
+      API_BASE_URL: http://backend:8000
+      ACCOUNTING_APP_URL: http://accounting:3001
+      RPA_API_KEY: ${RPA_API_KEY:?set RPA_API_KEY}
+      RPA_POLL_INTERVAL: ${RPA_DOCKER_POLL_INTERVAL:-5}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      accounting:
+        condition: service_healthy
+
   frontend:
     build: frontend
     ports:
       - "8080:80"
     depends_on:
       - backend
+      - accounting
 
 volumes:
   mongodb_data:
   storage_data:
+  accounting_data:
