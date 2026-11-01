@@ -44,3 +44,53 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+
+  accounting-and-rpa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Accounting app tests
+        working-directory: simulated-accounting-app
+        run: |
+          pip install -r requirements-dev.txt
+          pytest tests -q
+      - name: RPA worker tests
+        working-directory: rpa
+        run: |
+          pip install -r requirements-dev.txt
+          pytest tests -q
+
+  full-stack-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RPA_API_KEY: ci-smoke-test-key-0123456789
+      RPA_DOCKER_POLL_INTERVAL: "3"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pymupdf
+      - name: Start the full stack
+        run: docker compose -f docker-compose.full.yml up -d --build
+      - name: Upload an invoice and follow it through OCR, RPA and the accounting app
+        run: python scripts/smoke_full_stack.py http://localhost:8080
+      - name: Accounting records survive a restart
+        run: |
+          docker compose -f docker-compose.full.yml restart accounting
+          for i in $(seq 1 20); do
+            count=$(curl -sf http://localhost:8080/accounting/api/records | python -c "import json,sys; print(json.load(sys.stdin)['count'])" || echo 0)
+            [ "$count" -ge 1 ] && echo "records after restart: $count" && exit 0
+            sleep 3
+          done
+          echo "records were lost after restart" && exit 1
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.full.yml logs --tail=100
+      - name: Stop the stack
+        if: always()
+        run: docker compose -f docker-compose.full.yml down -v
