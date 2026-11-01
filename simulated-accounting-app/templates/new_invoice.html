@@ -4,7 +4,7 @@
 <div class="card">
     <h2 style="margin-bottom: 1.5rem;">Create New Invoice</h2>
     
-    <form method="POST" action="/new-invoice">
+    <form method="POST" action="{{ url_for('new_invoice') }}">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label for="vendor">Vendor *</label>
@@ -59,7 +59,7 @@
         
         <div style="margin-top: 1.5rem;">
             <button type="submit" class="btn btn-primary">Save Invoice</button>
-            <a href="/" class="btn btn-secondary" style="margin-left: 0.5rem;">Cancel</a>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary" style="margin-left: 0.5rem;">Cancel</a>
         </div>
     </form>
 </div>

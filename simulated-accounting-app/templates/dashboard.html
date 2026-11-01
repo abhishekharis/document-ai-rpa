@@ -4,7 +4,7 @@
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>Accounting Records</h2>
-        <a href="/new-invoice" class="btn btn-primary">Create New Invoice</a>
+        <a href="{{ url_for('new_invoice') }}" class="btn btn-primary">Create New Invoice</a>
     </div>
     
     {% if records %}
@@ -32,7 +32,7 @@
                 <td>{{ record.currency }}</td>
                 <td>{{ record.created_at[:19] if record.created_at else '-' }}</td>
                 <td>
-                    <a href="/record/{{ record.accounting_id }}" class="btn btn-secondary">View</a>
+                    <a href="{{ url_for('view_record', accounting_id=record.accounting_id) }}" class="btn btn-secondary">View</a>
                 </td>
             </tr>
             {% endfor %}

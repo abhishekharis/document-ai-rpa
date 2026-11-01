@@ -62,3 +62,6 @@ CODEBASE_KNOWLEDGE_TRANSFER.md
 # Coverage
 .coverage
 htmlcov/
+
+# Accounting app local data
+simulated-accounting-app/*.db*
