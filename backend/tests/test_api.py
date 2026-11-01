@@ -256,6 +256,8 @@ class TestRPAEndpoints:
         assert doc["status"] == "RPA_COMPLETED"
         assert doc["rpa"]["status"] == "COMPLETED"
         assert doc["rpa"]["job_id"] == f"JOB-{document_id}"
+        assert doc["rpa"]["accounting_record_id"] == "ACC-TEST"
+        assert client.get(f"/api/invoices/{document_id}").json()["rpa"]["accounting_record_id"] == "ACC-TEST"
         assert audit_events(mongo, document_id) == ["APPROVED", "RPA_QUEUED", "RPA_STARTED", "RPA_COMPLETED"]
 
 

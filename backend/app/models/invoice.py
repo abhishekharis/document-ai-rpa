@@ -58,6 +58,7 @@ class RPAStatus(BaseModel):
     eligible: bool = False
     status: str = "NOT_STARTED"
     job_id: Optional[str] = None
+    accounting_record_id: Optional[str] = None
     message: Optional[str] = None
     queued_at: Optional[datetime] = None
     processed_at: Optional[datetime] = None

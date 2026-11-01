@@ -697,6 +697,7 @@ async def rpa_result(
         "eligible": True,
         "status": "COMPLETED" if request.success else "FAILED",
         "job_id": invoice.rpa.job_id,
+        "accounting_record_id": request.accounting_record_id if request.success else None,
         "message": request.message or ("RPA completed successfully" if request.success else "RPA failed"),
         "processed_at": datetime.utcnow().isoformat()
     })
