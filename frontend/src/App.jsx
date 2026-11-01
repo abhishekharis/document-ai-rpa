@@ -5,6 +5,7 @@ import Upload from './pages/Upload'
 import Documents from './pages/Documents'
 import InvoiceDetails from './pages/InvoiceDetails'
 import Review from './pages/Review'
+import AccountingRecords from './pages/AccountingRecords'
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
               <Route path="/documents" element={<Documents />} />
               <Route path="/invoice/:documentId" element={<InvoiceDetails />} />
               <Route path="/review/:documentId" element={<Review />} />
+              <Route path="/accounting-records" element={<AccountingRecords />} />
             </Routes>
           </div>
         </main>

@@ -107,3 +107,13 @@ export const healthAPI = {
     return response.data;
   },
 };
+
+// The accounting app is a separate service, reverse-proxied at /accounting/
+export const ACCOUNTING_APP_URL = '/accounting/';
+
+export const accountingAPI = {
+  getRecords: async () => {
+    const response = await axios.get('/accounting/api/records');
+    return response.data;
+  },
+};

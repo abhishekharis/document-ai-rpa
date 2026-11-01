@@ -216,6 +216,21 @@ function InvoiceDetails() {
                 <dt className="text-sm text-slate-500">Status</dt>
                 <dd className="text-sm font-medium text-slate-900">{invoice.rpa?.status || 'NOT_STARTED'}</dd>
               </div>
+              {invoice.rpa?.accounting_record_id && (
+                <div className="flex items-center justify-between py-3">
+                  <dt className="text-sm text-slate-500">Accounting record</dt>
+                  <dd className="text-sm font-medium">
+                    <a
+                      href={`/accounting/record/${invoice.rpa.accounting_record_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="link font-mono"
+                    >
+                      {invoice.rpa.accounting_record_id}
+                    </a>
+                  </dd>
+                </div>
+              )}
               {invoice.rpa?.job_id && (
                 <div className="py-3">
                   <dt className="text-sm text-slate-500 mb-1">Job ID</dt>

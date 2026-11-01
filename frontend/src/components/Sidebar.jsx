@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useState } from 'react';
-import { LayoutDashboard, Upload, FileText, Cog, CheckCircle2, ScanLine, Menu, X, User } from 'lucide-react';
+import { LayoutDashboard, Upload, FileText, BookOpen, Cog, CheckCircle2, ScanLine, Menu, X, User } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Upload', href: '/upload', icon: Upload },
   { name: 'Documents', href: '/documents', icon: FileText },
+  { name: 'Accounting', href: '/accounting-records', icon: BookOpen },
   //{ name: 'Processing', href: '/', icon: Cog },
   //{ name: 'Results', href: '/', icon: CheckCircle2 },
 ];
