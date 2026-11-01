@@ -5,6 +5,7 @@ Polls the invoice queue and processes invoices into the accounting application
 """
 
 import requests
+import signal
 import time
 import logging
 from typing import Optional, Dict, Any
@@ -28,6 +29,7 @@ class RPAProcessor:
         self.api_session = requests.Session()
         self.api_session.headers.update({'Content-Type': 'application/json'})
         self.accounting_session = requests.Session()
+        self._stop = False
     
     def get_rpa_queue(self) -> Dict[str, Any]:
         """Get invoices from RPA queue"""
@@ -61,6 +63,8 @@ class RPAProcessor:
         try:
             # Prepare JSON data for accounting app
             json_data = {
+                # Lets the accounting app return the existing record if this submit is retried
+                'external_reference': invoice_data.get('document_id'),
                 'vendor': invoice_data.get('vendor', {}).get('name', ''),
                 'invoice_number': invoice_data.get('invoice_number', ''),
                 'invoice_date': invoice_data.get('invoice_date', ''),
@@ -154,6 +158,21 @@ class RPAProcessor:
             )
             return False
     
+    def process_queue_once(self) -> int:
+        """Process every invoice currently in the queue; returns how many were attempted."""
+        queue_data = self.get_rpa_queue()
+        invoices = queue_data.get("invoices", [])
+        for invoice in invoices:
+            if self._stop:
+                break
+            self.process_invoice(invoice["document_id"], invoice)
+        return len(invoices)
+    
+    def stop(self, *_args):
+        """Request a clean shutdown after the current invoice (SIGTERM/SIGINT handler)."""
+        logger.info("Shutdown requested")
+        self._stop = True
+    
     def run(self, poll_interval: int = 30):
         """Main processing loop"""
         logger.info("Starting RPA processor")
@@ -161,32 +180,29 @@ class RPAProcessor:
         logger.info(f"Accounting App URL: {self.accounting_app_url}")
         logger.info(f"Poll interval: {poll_interval} seconds")
         
-        while True:
+        signal.signal(signal.SIGTERM, self.stop)
+        signal.signal(signal.SIGINT, self.stop)
+        failures = 0
+        
+        while not self._stop:
             try:
-                # Get queue
-                queue_data = self.get_rpa_queue()
-                invoice_count = queue_data.get("count", 0)
-                
-                if invoice_count > 0:
-                    logger.info(f"Found {invoice_count} invoice(s) in queue")
-                    
-                    # Process first invoice
-                    invoice = queue_data["invoices"][0]
-                    document_id = invoice["document_id"]
-                    
-                    self.process_invoice(document_id, invoice)
-                else:
+                count = self.process_queue_once()
+                if count == 0:
                     logger.info("No invoices in queue, waiting...")
-                
-                # Wait before next poll
-                time.sleep(poll_interval)
-                
-            except KeyboardInterrupt:
-                logger.info("Shutting down RPA processor")
-                break
+                failures = 0
+                delay = poll_interval
             except Exception as e:
-                logger.error(f"Unexpected error in main loop: {e}")
-                time.sleep(poll_interval)
+                failures += 1
+                delay = min(poll_interval * 2 ** min(failures, 4), 300)
+                logger.error(f"Unexpected error in main loop: {e}; retrying in {delay}s")
+            
+            # Sleep in short steps so a shutdown request is honoured promptly
+            waited = 0.0
+            while waited < delay and not self._stop:
+                time.sleep(min(1.0, delay - waited))
+                waited += 1.0
+        
+        logger.info("RPA processor stopped")
 
 
 def main():
