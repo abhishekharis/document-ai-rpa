@@ -116,6 +116,8 @@ Additional settings (see `.env.example`):
 | `CORS_ORIGINS` | localhost dev ports | JSON list of allowed origins, e.g. `["https://app.example.com"]` |
 | `UPLOAD_RATE_LIMIT_PER_MINUTE` | `30` | Per-IP upload limit (in-memory, single process) |
 | `RPA_RATE_LIMIT_PER_MINUTE` | `120` | Per-IP limit on the RPA start/result endpoints |
+| `OCR_ENABLE_MKLDNN` | `false` | PaddleOCR oneDNN acceleration; off because it crashes some PaddlePaddle 3.x CPU builds |
+| `RPA_DOCKER_POLL_INTERVAL` | `5` | Seconds between RPA worker queue polls in `docker-compose.full.yml` |
 
 See `.env.production.example` for a production starting point.
 
@@ -198,7 +200,19 @@ export RPA_API_KEY=<a-secret-of-16+-characters>
 docker compose -f docker-compose.full.yml up --build
 ```
 
-The UI is served at http://localhost:8080 and nginx proxies `/api` to the backend. The stack uses its own MongoDB container and volumes, separate from the development `docker-compose.yml`. Set `ENVIRONMENT=production` and `CORS_ORIGINS` for real deployments.
+The stack runs five services: MongoDB, the backend, the simulated accounting app, the Python RPA worker and the nginx-served frontend. Everything is reachable through http://localhost:8080:
+
+- `/` - the React UI (including the **Accounting** page, which lists records from the accounting app)
+- `/api/` - proxied to the backend
+- `/accounting/` - proxied to the simulated accounting app
+
+The stack uses its own MongoDB container and volumes (`mongodb_data`, `storage_data`, `accounting_data`, `ocr_models`), separate from the development `docker-compose.yml`. Accounting records and uploaded documents survive restarts. Set `ENVIRONMENT=production` and `CORS_ORIGINS` for real deployments.
+
+The first upload downloads the OCR models (cached in the `ocr_models` volume afterwards), so it can take a minute. OCR currently runs inside the upload request.
+
+To check the whole pipeline (upload, OCR, approval, RPA, accounting record, persistence) run `python scripts/smoke_full_stack.py` against a running stack. CI does this on every push.
+
+**Apple Silicon:** PaddlePaddle segfaults in the Linux ARM container, so OCR does not work in Docker on an M-series Mac. Run the backend on the host (`python -m app.main`) and the rest in Docker, or use an x86 machine.
 
 ### Start Frontend
 ```bash
@@ -449,20 +463,22 @@ Backups contain invoice data. The script restricts file permissions but does not
 
 - **UiPath requires Windows** - RPA workflow development requires Windows OS
 - **Single-user demo** - No authentication/authorization implemented
-- **In-memory accounting app** - Data resets on restart
+- **Simulated accounting app** - A SQLite-backed stand-in, not a real accounting system
+- **Synchronous OCR** - Uploads hold the request open while OCR runs
+- **Docker OCR on Apple Silicon** - Not supported (see above)
 - **PaddleOCR accuracy** - Depends on document quality and layout
 - **English only** - OCR optimized for English documents
 
 ## Demo Procedure
 
-1. Start all services (MongoDB, backend, frontend, accounting app)
-2. Open browser to `http://localhost:3000`
+1. Start all services (MongoDB, backend, frontend, accounting app, RPA worker), either individually or with `docker-compose.full.yml`
+2. Open browser to `http://localhost:3000` (`http://localhost:8080` for the Docker stack)
 3. Upload a sample invoice
 4. Wait for processing (OCR + extraction + validation)
 5. Review extracted fields and confidence scores
 6. If needed, correct fields and approve
 7. (Optional) Start UiPath workflow
-8. Verify invoice appears in accounting app
+8. Verify the invoice appears on the **Accounting** page (or in the accounting app itself)
 9. Check invoice status changes to `RPA_COMPLETED`
 
 ## Project Structure
@@ -493,14 +509,20 @@ document-ai-rpa/
 │   └── package.json
 ├── simulated-accounting-app/
 │   ├── app.py                   # Flask application
+│   ├── db.py                    # SQLite storage
 │   ├── templates/               # HTML templates
+│   ├── tests/
 │   └── requirements.txt
 ├── rpa/
+│   ├── python_rpa_processor.py  # Python RPA worker
+│   ├── tests/
 │   ├── UiPath/InvoiceProcessor/ # UiPath workflow
 │   └── README.md                # RPA documentation
+├── scripts/                     # Sample invoice generator, full-stack smoke test
 ├── sample_documents/           # Test invoices
 ├── tests/e2e/                   # E2E tests
-├── docker-compose.yml           # MongoDB container
+├── docker-compose.yml           # MongoDB container (development)
+├── docker-compose.full.yml      # Full stack: MongoDB, backend, accounting, RPA, frontend
 ├── .env.example                 # Environment template
 └── README.md
 ```
