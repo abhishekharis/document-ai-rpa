@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
@@ -14,6 +14,8 @@ from app.logging_config import configure_logging
 from app.database import db, get_database
 from app.services.repository import InvoiceRepository
 from app.services.processing_service import ProcessingService
+from app.services.pipeline import run_processing, queue_approved_invoice
+from app.services.job_queue import JobQueue, create_job_queue
 from app.storage.file_storage import file_storage
 from app.models.invoice import Invoice, InvoiceStatus, Vendor, Extraction, ExtractionField, LineItem, InvoiceUpdate
 from app.models.audit_log import AuditLog
@@ -45,9 +47,13 @@ async def lifespan(app: FastAPI):
     database = db.get_database()
     repo = InvoiceRepository(database)
     await repo.create_indexes()
-    logger.info("Application startup complete (environment=%s)", settings.environment)
+    app.state.job_queue = create_job_queue()
+    logger.info("Application startup complete (environment=%s, background_ocr=%s)",
+                settings.environment, app.state.job_queue is not None)
     yield
     # Shutdown
+    if app.state.job_queue:
+        await app.state.job_queue.close()
     db.close()
     logger.info("Application shutdown")
 
@@ -101,6 +107,7 @@ async def health_check(database: AsyncIOMotorDatabase = Depends(get_database)):
 @app.post("/api/invoices/upload", response_model=UploadResponse, status_code=status.HTTP_201_CREATED,
           dependencies=[Depends(upload_limiter)])
 async def upload_invoice(
+    request: Request,
     file: UploadFile = File(...),
     database: AsyncIOMotorDatabase = Depends(get_database)
 ):
@@ -158,98 +165,39 @@ async def upload_invoice(
         message=f"Document uploaded: {file.filename}"
     ))
     
-    # Process the document (OCR + extraction + validation)
-    final_status = await run_processing(repo, ProcessingService(), document_id, content, file.filename or "document")
+    final_status = await process_or_enqueue(
+        request.app.state.job_queue, repo, document_id, content, file.filename or "document"
+    )
     return UploadResponse(document_id=document_id, status=final_status.value)
 
 
-async def queue_approved_invoice(repo: InvoiceRepository, document_id: str) -> bool:
-    """Queue an APPROVED invoice for RPA and log it. Returns False if it was no longer APPROVED."""
-    if not await repo.queue_for_rpa(document_id):
-        return False
-    await repo.create_audit_log(AuditLog(
-        document_id=document_id,
-        event="RPA_QUEUED",
-        old_status=InvoiceStatus.APPROVED.value,
-        new_status=InvoiceStatus.RPA_QUEUED.value,
-        message="Document queued for RPA processing"
-    ))
-    return True
-
-
-async def run_processing(
+async def process_or_enqueue(
+    job_queue: Optional[JobQueue],
     repo: InvoiceRepository,
-    processing_service: ProcessingService,
     document_id: str,
     content: bytes,
     filename: str
 ) -> InvoiceStatus:
-    """Run the processing pipeline for an invoice in PROCESSING status and return its resulting status."""
+    """Hand the document to the OCR worker if Redis is configured, else process it inline."""
+    if job_queue is None:
+        return await run_processing(repo, ProcessingService(), document_id, content, filename)
     try:
-        processing_result = await processing_service.process_invoice(
-            content,
-            filename,
-            document_id
-        )
-        
-        # Update invoice with processing results
-        await repo.update(document_id, InvoiceUpdate(
-            vendor=Vendor(**processing_result['vendor']),
-            invoice_number=processing_result['invoice_number'],
-            invoice_date=processing_result['invoice_date'],
-            due_date=processing_result['due_date'],
-            currency=processing_result['currency'],
-            subtotal=processing_result['subtotal'],
-            tax=processing_result['tax'],
-            total=processing_result['total'],
-            line_items=[]
-        ))
-        
-        # Update extraction results
-        await repo.update_extraction(document_id, processing_result['extraction'])
-        
-        # Update validation results
-        await repo.update_validation(document_id, processing_result['validation'])
-        
-        # Update status based on processing result
-        final_status = InvoiceStatus(processing_result['status'])
-        await repo.update_status(document_id, final_status, InvoiceStatus.PROCESSING)
-        
-        # Log processing complete
-        await repo.create_audit_log(AuditLog(
-            document_id=document_id,
-            event="PROCESSING_COMPLETE",
-            message=f"Document processed successfully - status: {final_status.value}"
-        ))
-        
-        # If processing succeeded and document is PROCESSED, automatically approve and queue for RPA
-        if final_status == InvoiceStatus.PROCESSED:
-            # Transition to APPROVED
-            await repo.update_status(document_id, InvoiceStatus.APPROVED, InvoiceStatus.PROCESSED)
-            await repo.create_audit_log(AuditLog(
-                document_id=document_id,
-                event="AUTO_APPROVED",
-                message="Document automatically approved after successful processing"
-            ))
-            
-            if await queue_approved_invoice(repo, document_id):
-                return InvoiceStatus.RPA_QUEUED
-            return InvoiceStatus.APPROVED
-        
-        return final_status
-        
+        await job_queue.enqueue(document_id)
     except Exception as e:
-        # Update status to ERROR
+        logger.error("Could not queue %s for processing: %s", document_id, e)
         await repo.update_status(document_id, InvoiceStatus.ERROR, InvoiceStatus.PROCESSING)
-        
-        # Log error
         await repo.create_audit_log(AuditLog(
             document_id=document_id,
             event="PROCESSING_ERROR",
-            message=f"Processing failed: {str(e)}"
+            message=f"Could not queue document for processing: {e}"
         ))
-        
         return InvoiceStatus.ERROR
+    await repo.create_audit_log(AuditLog(
+        document_id=document_id,
+        event="PROCESSING_QUEUED",
+        message="Document queued for background processing"
+    ))
+    return InvoiceStatus.PROCESSING
 
 
 # Get All Invoices
@@ -333,11 +281,11 @@ async def bulk_delete_invoices(
 @app.post("/api/invoices/bulk-reprocess", response_model=BulkActionResponse)
 async def bulk_reprocess_invoices(
     request: BulkActionRequest,
+    http_request: Request,
     database: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Re-run the processing pipeline on eligible invoices using their stored original files."""
     repo = InvoiceRepository(database)
-    processing_service = ProcessingService()
     results = []
     
     for document_id in dict.fromkeys(request.document_ids):
@@ -377,10 +325,13 @@ async def bulk_reprocess_invoices(
                 message="Document reprocessing started"
             ))
             
-            final_status = await run_processing(repo, processing_service, document_id, content, invoice.original_filename)
+            final_status = await process_or_enqueue(
+                http_request.app.state.job_queue, repo, document_id, content, invoice.original_filename
+            )
             results.append(BulkActionResult(
                 document_id=document_id, success=True, status=final_status.value,
-                message=f"Reprocessed - status: {final_status.value}"
+                message=("Reprocessing queued" if final_status == InvoiceStatus.PROCESSING
+                         else f"Reprocessed - status: {final_status.value}")
             ))
         except Exception as e:
             results.append(BulkActionResult(document_id=document_id, success=False, message=f"Reprocess failed: {str(e)}"))

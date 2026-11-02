@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 10
     
     # Processing
+    # When set, uploads are queued in Redis for a separate worker; when empty they are processed inline
+    redis_url: str = ""
     ocr_enable_mkldnn: bool = False
     confidence_threshold: float = 0.80
     

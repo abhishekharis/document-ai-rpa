@@ -36,6 +36,11 @@ class InvoiceRepository:
             return Invoice(**doc)
         return None
     
+    async def list_document_ids_by_status(self, status: InvoiceStatus) -> List[str]:
+        """Return the document IDs of every invoice currently in the given status."""
+        cursor = self.collection.find({"status": status.value}, {"document_id": 1, "_id": 0})
+        return [doc["document_id"] async for doc in cursor]
+    
     async def get_all(self, status: Optional[InvoiceStatus] = None, limit: int = 100) -> List[Invoice]:
         """Get all invoices, optionally filtered by status."""
         query = {}
