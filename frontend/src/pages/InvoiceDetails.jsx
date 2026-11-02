@@ -26,6 +26,13 @@ function InvoiceDetails() {
     loadInvoice();
   }, [documentId]);
 
+  // Uploads are processed in the background; keep refreshing until OCR finishes
+  useEffect(() => {
+    if (invoice?.status !== 'PROCESSING') return undefined;
+    const timer = setInterval(loadInvoice, 2000);
+    return () => clearInterval(timer);
+  }, [invoice?.status, documentId]);
+
   const loadInvoice = async () => {
     try {
       const data = await invoiceAPI.getById(documentId);

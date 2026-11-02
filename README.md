@@ -117,6 +117,7 @@ Additional settings (see `.env.example`):
 | `UPLOAD_RATE_LIMIT_PER_MINUTE` | `30` | Per-IP upload limit (in-memory, single process) |
 | `RPA_RATE_LIMIT_PER_MINUTE` | `120` | Per-IP limit on the RPA start/result endpoints |
 | `OCR_ENABLE_MKLDNN` | `false` | PaddleOCR oneDNN acceleration; off because it crashes some PaddlePaddle 3.x CPU builds |
+| `REDIS_URL` | empty | Queue OCR jobs in Redis for `python -m app.worker`; empty processes uploads inline |
 | `RPA_DOCKER_POLL_INTERVAL` | `5` | Seconds between RPA worker queue polls in `docker-compose.full.yml` |
 
 See `.env.production.example` for a production starting point.
@@ -200,7 +201,7 @@ export RPA_API_KEY=<a-secret-of-16+-characters>
 docker compose -f docker-compose.full.yml up --build
 ```
 
-The stack runs five services: MongoDB, the backend, the simulated accounting app, the Python RPA worker and the nginx-served frontend. Everything is reachable through http://localhost:8080:
+The stack runs seven services: MongoDB, Redis, the backend, an OCR worker, the simulated accounting app, the Python RPA worker and the nginx-served frontend. Everything is reachable through http://localhost:8080:
 
 - `/` - the React UI (including the **Accounting** page, which lists records from the accounting app)
 - `/api/` - proxied to the backend
@@ -208,7 +209,9 @@ The stack runs five services: MongoDB, the backend, the simulated accounting app
 
 The stack uses its own MongoDB container and volumes (`mongodb_data`, `storage_data`, `accounting_data`, `ocr_models`), separate from the development `docker-compose.yml`. Accounting records and uploaded documents survive restarts. Set `ENVIRONMENT=production` and `CORS_ORIGINS` for real deployments.
 
-The first upload downloads the OCR models (cached in the `ocr_models` volume afterwards), so it can take a minute. OCR currently runs inside the upload request.
+Uploads return immediately with status `PROCESSING`; the backend queues the document in Redis and the `ocr-worker` container runs OCR. The first document downloads the OCR models (cached in the `ocr_models` volume afterwards), so it can take a minute. Without `REDIS_URL` (the default for local development) the backend processes uploads inline instead.
+
+To run the worker locally with Redis, set `REDIS_URL=redis://localhost:6379/0` and run `python -m app.worker` next to the backend.
 
 To check the whole pipeline (upload, OCR, approval, RPA, accounting record, persistence) run `python scripts/smoke_full_stack.py` against a running stack. CI does this on every push.
 
@@ -464,7 +467,7 @@ Backups contain invoice data. The script restricts file permissions but does not
 - **UiPath requires Windows** - RPA workflow development requires Windows OS
 - **Single-user demo** - No authentication/authorization implemented
 - **Simulated accounting app** - A SQLite-backed stand-in, not a real accounting system
-- **Synchronous OCR** - Uploads hold the request open while OCR runs
+- **Inline OCR without Redis** - Without `REDIS_URL`, uploads hold the request open while OCR runs
 - **Docker OCR on Apple Silicon** - Not supported (see above)
 - **PaddleOCR accuracy** - Depends on document quality and layout
 - **English only** - OCR optimized for English documents

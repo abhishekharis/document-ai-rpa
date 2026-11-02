@@ -13,6 +13,14 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: .
@@ -20,13 +28,39 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       MONGODB_URI: mongodb://mongodb:27017
+      REDIS_URL: redis://redis:6379/0
+      RPA_API_KEY: ${RPA_API_KEY:?set RPA_API_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:8080"]}
+    volumes:
+      - storage_data:/data/storage
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Runs OCR for uploaded documents; same image as the backend
+  ocr-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "app.worker"]
+    healthcheck:
+      disable: true
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      MONGODB_URI: mongodb://mongodb:27017
+      REDIS_URL: redis://redis:6379/0
       RPA_API_KEY: ${RPA_API_KEY:?set RPA_API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:8080"]}
     volumes:
       - storage_data:/data/storage
       - ocr_models:/root/.paddlex
+    restart: unless-stopped
     depends_on:
       mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   accounting:
