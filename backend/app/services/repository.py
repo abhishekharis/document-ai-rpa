@@ -41,6 +41,14 @@ class InvoiceRepository:
         cursor = self.collection.find({"status": status.value}, {"document_id": 1, "_id": 0})
         return [doc["document_id"] async for doc in cursor]
     
+    async def list_changed_since(self, since: datetime) -> List[dict]:
+        """Return {document_id, status, updated_at} for invoices updated at or after `since`, oldest first."""
+        cursor = self.collection.find(
+            {"updated_at": {"$gte": since}},
+            {"document_id": 1, "status": 1, "updated_at": 1, "_id": 0}
+        ).sort("updated_at", 1)
+        return [doc async for doc in cursor]
+    
     async def get_all(self, status: Optional[InvoiceStatus] = None, limit: int = 100) -> List[Invoice]:
         """Get all invoices, optionally filtered by status."""
         query = {}

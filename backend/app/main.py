@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, UploadFile, File, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from contextlib import asynccontextmanager
 import secrets
 from pathlib import Path
@@ -15,6 +15,7 @@ from app.database import db, get_database
 from app.services.repository import InvoiceRepository
 from app.services.processing_service import ProcessingService
 from app.services.pipeline import run_processing, queue_approved_invoice
+from app.services.events import invoice_event_stream
 from app.services.job_queue import JobQueue, create_job_queue
 from app.storage.file_storage import file_storage
 from app.models.invoice import Invoice, InvoiceStatus, Vendor, Extraction, ExtractionField, LineItem, InvoiceUpdate
@@ -198,6 +199,17 @@ async def process_or_enqueue(
         message="Document queued for background processing"
     ))
     return InvoiceStatus.PROCESSING
+
+
+# Live invoice updates (Server-Sent Events)
+@app.get("/api/events")
+async def invoice_events(request: Request, database: AsyncIOMotorDatabase = Depends(get_database)):
+    """Stream an `invoice` event ({document_id, status}) each time an invoice changes."""
+    return StreamingResponse(
+        invoice_event_stream(InvoiceRepository(database), request.is_disconnected),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # Get All Invoices
