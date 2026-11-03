@@ -176,7 +176,17 @@ function InvoiceDetails() {
                     {invoice.validation.warnings.map((warning, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-sm text-amber-700">
                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                        <span>{warning}</span>
+                        <span>
+                          {warning}
+                          {invoice.validation.duplicate_of && warning.includes(invoice.validation.duplicate_of) && (
+                            <>
+                              {' '}
+                              <Link to={`/invoice/${invoice.validation.duplicate_of}`} className="link">
+                                View original
+                              </Link>
+                            </>
+                          )}
+                        </span>
                       </li>
                     ))}
                   </ul>

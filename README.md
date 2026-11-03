@@ -276,7 +276,11 @@ Accounting app will be available at `http://localhost:3001`
 4. Use "Bulk Actions" to delete or reprocess selected documents
 5. Deletion removes the record and files but preserves audit logs; reprocessing is allowed for ERROR, REJECTED, and NEEDS_REVIEW documents
 
-### 5. RPA Processing
+### 5. Duplicate Detection
+
+After OCR, each invoice is compared with earlier ones. A match on vendor (fuzzy, so "Acme Inc." and "ACME" or a small OCR misread still match) plus invoice number, or on vendor plus date and total, adds a "Possible duplicate of ..." warning with a link to the original and sends the invoice to review instead of auto-approving it.
+
+### 6. RPA Processing
 
 Once approved:
 - Invoice enters RPA queue
@@ -543,7 +547,6 @@ document-ai-rpa/
 - Add user authentication
 - Implement real accounting system integration (SAP, QuickBooks)
 - Add support for multi-language OCR
-- Implement advanced duplicate detection
 - Add email notifications for RPA failures
 - Implement audit log export
 - Add invoice template learning

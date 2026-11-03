@@ -46,6 +46,7 @@ class Validation(BaseModel):
     is_valid: bool = True
     errors: List[str] = []
     warnings: List[str] = []
+    duplicate_of: Optional[str] = None
 
 
 class Review(BaseModel):

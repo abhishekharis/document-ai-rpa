@@ -3,6 +3,7 @@ from datetime import datetime
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceUpdate, Vendor, Extraction, Validation, Review, RPAStatus
 from app.models.audit_log import AuditLog
+import re
 import uuid
 
 
@@ -47,6 +48,26 @@ class InvoiceRepository:
             {"updated_at": {"$gte": since}},
             {"document_id": 1, "status": 1, "updated_at": 1, "_id": 0}
         ).sort("updated_at", 1)
+        return [doc async for doc in cursor]
+    
+    async def find_duplicate_candidates(self, document_id: str, invoice_number: str, total: Optional[float]) -> List[dict]:
+        """Other invoices sharing a similar invoice number or the same total (candidates for duplicate checks)."""
+        number_pattern = r"^\s*" + r"[^A-Za-z0-9]*".join(re.escape(c) for c in re.sub(r"[^A-Za-z0-9]", "", invoice_number or "")) + r"\s*$"
+        clauses = []
+        if invoice_number and re.sub(r"[^A-Za-z0-9]", "", invoice_number):
+            clauses.append({"invoice_number": {"$regex": number_pattern, "$options": "i"}})
+        if total is not None:
+            clauses.append({"total": total})
+        if not clauses:
+            return []
+        cursor = self.collection.find(
+            {
+                "document_id": {"$ne": document_id},
+                "status": {"$nin": [InvoiceStatus.ERROR.value, InvoiceStatus.REJECTED.value]},
+                "$or": clauses,
+            },
+            {"_id": 0, "document_id": 1, "vendor": 1, "invoice_number": 1, "invoice_date": 1, "total": 1, "created_at": 1},
+        ).sort("created_at", 1).limit(200)
         return [doc async for doc in cursor]
     
     async def get_all(self, status: Optional[InvoiceStatus] = None, limit: int = 100) -> List[Invoice]:
