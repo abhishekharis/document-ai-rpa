@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { CheckCircle2, XCircle, AlertCircle, AlertTriangle, ClipboardCheck, FileText } from 'lucide-react';
-import { invoiceAPI } from '../services/api';
+import { useInvoice } from '../hooks/useInvoices';
 import PageHeader from '../components/ui/PageHeader';
 import StatusBadge from '../components/ui/StatusBadge';
 import LoadingState from '../components/ui/LoadingState';
@@ -18,31 +17,8 @@ function Field({ label, children, className = '' }) {
 
 function InvoiceDetails() {
   const { documentId } = useParams();
-  const [invoice, setInvoice] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    loadInvoice();
-  }, [documentId]);
-
-  // Uploads are processed in the background; keep refreshing until OCR finishes
-  useEffect(() => {
-    if (invoice?.status !== 'PROCESSING') return undefined;
-    const timer = setInterval(loadInvoice, 2000);
-    return () => clearInterval(timer);
-  }, [invoice?.status, documentId]);
-
-  const loadInvoice = async () => {
-    try {
-      const data = await invoiceAPI.getById(documentId);
-      setInvoice(data);
-    } catch (err) {
-      setError('Failed to load invoice details.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: invoice, isLoading: loading, isError } = useInvoice(documentId);
+  const error = isError ? 'Failed to load invoice details.' : '';
 
   const getConfidenceColor = (confidence) => {
     if (confidence >= 0.8) return 'text-green-600';

@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText, Eye, CheckCircle2, AlertTriangle, Upload, ArrowRight, Sparkles, RefreshCw } from 'lucide-react';
-import { invoiceAPI } from '../services/api';
+import { useInvoices } from '../hooks/useInvoices';
 import PageHeader from '../components/ui/PageHeader';
 import StatCard from '../components/ui/StatCard';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -12,41 +11,15 @@ import EmptyState from '../components/ui/EmptyState';
 const ATTENTION_STATUSES = ['ERROR', 'REJECTED', 'RPA_FAILED'];
 
 function Dashboard() {
-  const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [stats, setStats] = useState({
-    total: 0,
-    needsReview: 0,
-    needsAttention: 0,
-    rpaCompleted: 0,
-  });
-
-  useEffect(() => {
-    loadInvoices();
-  }, []);
-
-  const loadInvoices = async () => {
-    setLoading(true);
-    setLoadError('');
-    try {
-      const data = await invoiceAPI.getAll();
-      setInvoices(data.invoices);
-      
-      // Calculate stats
-      const stats = {
-        total: data.count,
-        needsReview: data.invoices.filter(i => i.status === 'NEEDS_REVIEW').length,
-        needsAttention: data.invoices.filter(i => ATTENTION_STATUSES.includes(i.status)).length,
-        rpaCompleted: data.invoices.filter(i => i.status === 'RPA_COMPLETED').length,
-      };
-      setStats(stats);
-    } catch (error) {
-      console.error('Failed to load invoices:', error);
-      setLoadError('Failed to load documents. Please check that the server is running and try again.');
-    } finally {
-      setLoading(false);
-    }
+  const { data, isLoading: loading, isError, refetch } = useInvoices();
+  const invoices = data?.invoices ?? [];
+  const loadError = isError ? 'Failed to load documents. Please check that the server is running and try again.' : '';
+  const loadInvoices = () => refetch();
+  const stats = {
+    total: data?.count ?? 0,
+    needsReview: invoices.filter(i => i.status === 'NEEDS_REVIEW').length,
+    needsAttention: invoices.filter(i => ATTENTION_STATUSES.includes(i.status)).length,
+    rpaCompleted: invoices.filter(i => i.status === 'RPA_COMPLETED').length,
   };
 
   if (loading) {

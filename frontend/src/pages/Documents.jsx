@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, ChevronDown, Trash2, RefreshCw, FileText, SearchX, Upload, Loader2, AlertTriangle } from 'lucide-react';
 import { invoiceAPI } from '../services/api';
+import { useInvoices } from '../hooks/useInvoices';
 import PageHeader from '../components/ui/PageHeader';
 import StatusBadge from '../components/ui/StatusBadge';
 import LoadingState from '../components/ui/LoadingState';
@@ -47,9 +48,9 @@ const ACTIONS = {
 const pluralize = (count) => `${count} document${count === 1 ? '' : 's'}`;
 
 function Documents() {
-  const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
+  const { data, isLoading: loading, isError, refetch } = useInvoices();
+  const invoices = useMemo(() => data?.invoices ?? [], [data]);
+  const loadError = isError ? 'Failed to load documents. Please try again.' : '';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [dateFilter, setDateFilter] = useState('ALL');
@@ -61,23 +62,9 @@ function Documents() {
   const selectAllRef = useRef(null);
   const menuRef = useRef(null);
 
-  useEffect(() => {
-    loadInvoices();
-  }, []);
-
-  const loadInvoices = async ({ showSpinner = true } = {}) => {
-    if (showSpinner) setLoading(true);
-    setLoadError('');
+  const loadInvoices = async () => {
     setSelectedIds(new Set());
-    try {
-      const data = await invoiceAPI.getAll();
-      setInvoices(data.invoices);
-    } catch (error) {
-      console.error('Failed to load documents:', error);
-      setLoadError('Failed to load documents. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    await refetch();
   };
 
   const visibleInvoices = useMemo(() => {
@@ -215,7 +202,6 @@ function Documents() {
         <Alert
           type="error"
           title={loadError}
-          onDismiss={() => setLoadError('')}
           className="mb-6"
         >
           <button

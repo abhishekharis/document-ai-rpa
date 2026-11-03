@@ -6,8 +6,11 @@ import Documents from './pages/Documents'
 import InvoiceDetails from './pages/InvoiceDetails'
 import Review from './pages/Review'
 import AccountingRecords from './pages/AccountingRecords'
+import { useInvoiceEvents } from './hooks/useInvoices'
 
 function App() {
+  useInvoiceEvents();
+
   return (
     <Router>
       <div className="min-h-screen bg-slate-50">
