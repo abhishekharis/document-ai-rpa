@@ -181,7 +181,13 @@ async def process_or_enqueue(
 ) -> InvoiceStatus:
     """Hand the document to the OCR worker if Redis is configured, else process it inline."""
     if job_queue is None:
-        return await run_processing(repo, ProcessingService(), document_id, content, filename)
+        from app.config import settings as _settings
+        token = await repo.claim_ocr_job(
+            document_id,
+            stale_threshold_minutes=_settings.processing_token_timeout_minutes,
+        )
+        return await run_processing(repo, ProcessingService(), document_id, content, filename,
+                                    processing_token=token)
     try:
         await job_queue.enqueue(document_id)
     except Exception as e:

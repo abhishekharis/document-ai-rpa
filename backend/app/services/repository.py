@@ -1,5 +1,5 @@
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceUpdate, Vendor, Extraction, Validation, Review, RPAStatus
 from app.models.audit_log import AuditLog
@@ -37,6 +37,27 @@ class InvoiceRepository:
             return Invoice(**doc)
         return None
     
+    async def find_unclaimed_processing_jobs(self, stale_threshold_minutes: int = 15) -> List[str]:
+        """Return document IDs of PROCESSING invoices that have no token or a stale claim.
+
+        These are safe to re-queue because:
+        - No token: job was popped from Redis but the worker died before claiming.
+        - Stale claimed_at: worker claimed but has not finished within the timeout window.
+        """
+        stale_before = datetime.utcnow() - timedelta(minutes=stale_threshold_minutes)
+        cursor = self.collection.find(
+            {
+                "status": InvoiceStatus.PROCESSING.value,
+                "$or": [
+                    {"processing_token": None},
+                    {"processing_token": {"$exists": False}},
+                    {"claimed_at": {"$lt": stale_before}},
+                ],
+            },
+            {"document_id": 1, "_id": 0},
+        )
+        return [doc["document_id"] async for doc in cursor]
+
     async def list_document_ids_by_status(self, status: InvoiceStatus) -> List[str]:
         """Return the document IDs of every invoice currently in the given status."""
         cursor = self.collection.find({"status": status.value}, {"document_id": 1, "_id": 0})
@@ -83,6 +104,60 @@ class InvoiceRepository:
             invoices.append(Invoice(**doc))
         return invoices
     
+    async def claim_ocr_job(self, document_id: str, stale_threshold_minutes: int = 15) -> Optional[str]:
+        """Claim a PROCESSING invoice for OCR. Returns a token or None if already claimed by another worker."""
+        stale_before = datetime.utcnow() - timedelta(minutes=stale_threshold_minutes)
+        token = str(uuid.uuid4())
+        now = datetime.utcnow()
+        result = await self.collection.find_one_and_update(
+            {
+                "document_id": document_id,
+                "status": InvoiceStatus.PROCESSING.value,
+                "$or": [
+                    {"processing_token": None},
+                    {"processing_token": {"$exists": False}},
+                    {"claimed_at": {"$lt": stale_before}},
+                ],
+            },
+            {"$set": {"processing_token": token, "claimed_at": now}},
+            return_document=True,
+        )
+        return token if result is not None else None
+
+    async def finish_ocr_job(
+        self,
+        document_id: str,
+        token: str,
+        invoice_fields: dict,
+        extraction: dict,
+        validation: dict,
+        final_status: InvoiceStatus,
+    ) -> bool:
+        """Write all OCR results atomically, only when the token still matches.
+
+        Returns True when the update landed, False when the claim was superseded.
+        """
+        now = datetime.utcnow()
+        result = await self.collection.update_one(
+            {
+                "document_id": document_id,
+                "status": InvoiceStatus.PROCESSING.value,
+                "processing_token": token,
+            },
+            {
+                "$set": {
+                    **invoice_fields,
+                    "extraction": extraction,
+                    "validation": validation,
+                    "status": final_status.value,
+                    "processing_token": None,
+                    "claimed_at": None,
+                    "updated_at": now,
+                }
+            },
+        )
+        return result.modified_count > 0
+
     async def update(self, document_id: str, update_data: InvoiceUpdate) -> Optional[Invoice]:
         """Update invoice fields."""
         update_dict = {k: v for k, v in update_data.model_dump().items() if v is not None}
@@ -139,6 +214,8 @@ class InvoiceRepository:
                     "validation": Validation().model_dump(),
                     "review": Review().model_dump(),
                     "rpa": RPAStatus().model_dump(),
+                    "processing_token": None,
+                    "claimed_at": None,
                     "updated_at": datetime.utcnow()
                 }
             }

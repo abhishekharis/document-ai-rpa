@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     redis_url: str = ""
     ocr_enable_mkldnn: bool = False
     confidence_threshold: float = 0.80
+    # How long to wait before a PROCESSING job with a claimed token is considered abandoned (minutes).
+    # Set high enough to allow for the first-run PaddleOCR model download (~10 min).
+    processing_token_timeout_minutes: int = 15
     
     # API
     api_host: str = "127.0.0.1"

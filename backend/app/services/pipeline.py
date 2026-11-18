@@ -1,7 +1,8 @@
 import logging
+from typing import Optional
 
 from app.models.audit_log import AuditLog
-from app.models.invoice import InvoiceStatus, InvoiceUpdate, Vendor
+from app.models.invoice import InvoiceStatus
 from app.services.processing_service import ProcessingService
 from app.services.repository import InvoiceRepository
 from app.utils.duplicates import duplicate_reason
@@ -87,50 +88,90 @@ async def run_processing(
             validation['duplicate_of'] = original_id
             if final_status == InvoiceStatus.PROCESSED:
                 final_status = InvoiceStatus.NEEDS_REVIEW
+
+        # Build the flat field map for $set
+        invoice_fields = {
+            "vendor": processing_result['vendor'],
+            "invoice_number": processing_result['invoice_number'],
+            "invoice_date": processing_result['invoice_date'],
+            "due_date": processing_result['due_date'],
+            "currency": processing_result['currency'],
+            "subtotal": processing_result['subtotal'],
+            "tax": processing_result['tax'],
+            "total": processing_result['total'],
+            "line_items": [],
+        }
+
+        if processing_token:
+            # Guarded path: one atomic write; if the claim was stolen, bail out silently
+            landed = await repo.finish_ocr_job(
+                document_id=document_id,
+                token=processing_token,
+                invoice_fields=invoice_fields,
+                extraction=processing_result['extraction'],
+                validation=processing_result['validation'],
+                final_status=final_status,
+            )
+            if not landed:
+                logger.warning(
+                    "OCR result for %s discarded: processing_token no longer matches (superseded or status changed)",
+                    document_id,
+                )
+                invoice = await repo.get_by_document_id(document_id)
+                return invoice.status if invoice else InvoiceStatus.ERROR
+        else:
+            # Unguarded path (inline, no token): keep legacy behaviour
+            from app.models.invoice import InvoiceUpdate, Vendor
+            await repo.update(document_id, InvoiceUpdate(
+                vendor=Vendor(**processing_result['vendor']),
+                invoice_number=processing_result['invoice_number'],
+                invoice_date=processing_result['invoice_date'],
+                due_date=processing_result['due_date'],
+                currency=processing_result['currency'],
+                subtotal=processing_result['subtotal'],
+                tax=processing_result['tax'],
+                total=processing_result['total'],
+                line_items=[]
+            ))
+            await repo.update_extraction(document_id, processing_result['extraction'])
+            await repo.update_validation(document_id, processing_result['validation'])
+            await repo.update_status(document_id, final_status, InvoiceStatus.PROCESSING)
+
+        if duplicate:
+            original_id, reason = duplicate
             await repo.create_audit_log(AuditLog(
                 document_id=document_id,
                 event="DUPLICATE_DETECTED",
                 message=f"Possible duplicate of {original_id} ({reason})"
             ))
-        
-        # Update validation results
-        await repo.update_validation(document_id, processing_result['validation'])
-        
-        # Update status based on processing result
-        await repo.update_status(document_id, final_status, InvoiceStatus.PROCESSING)
-        
-        # Log processing complete
+
         await repo.create_audit_log(AuditLog(
             document_id=document_id,
             event="PROCESSING_COMPLETE",
             message=f"Document processed successfully - status: {final_status.value}"
         ))
-        
-        # If processing succeeded and document is PROCESSED, automatically approve and queue for RPA
+
+        # Auto-approve and queue if confidence was high enough
         if final_status == InvoiceStatus.PROCESSED:
-            # Transition to APPROVED
-            await repo.update_status(document_id, InvoiceStatus.APPROVED, InvoiceStatus.PROCESSED)
-            await repo.create_audit_log(AuditLog(
-                document_id=document_id,
-                event="AUTO_APPROVED",
-                message="Document automatically approved after successful processing"
-            ))
-            
-            if await queue_approved_invoice(repo, document_id):
-                return InvoiceStatus.RPA_QUEUED
+            approved = await repo.update_status(document_id, InvoiceStatus.APPROVED, InvoiceStatus.PROCESSED)
+            if approved:
+                await repo.create_audit_log(AuditLog(
+                    document_id=document_id,
+                    event="AUTO_APPROVED",
+                    message="Document automatically approved after successful processing"
+                ))
+                if await queue_approved_invoice(repo, document_id):
+                    return InvoiceStatus.RPA_QUEUED
             return InvoiceStatus.APPROVED
-        
+
         return final_status
-        
+
     except Exception as e:
-        # Update status to ERROR
+        # Clear the claim so the recovery sweep can re-queue if needed
         await repo.update_status(document_id, InvoiceStatus.ERROR, InvoiceStatus.PROCESSING)
-        
-        # Log error
         await repo.create_audit_log(AuditLog(
             document_id=document_id,
             event="PROCESSING_ERROR",
             message=f"Processing failed: {str(e)}"
         ))
-        
         return InvoiceStatus.ERROR
