@@ -237,7 +237,10 @@ class TestRPAEndpoints:
             json={"document_id": document_id, "api_key": TEST_RPA_API_KEY},
         )
         assert start.status_code == 200
-        assert start.json()["status"] == "RPA_PROCESSING"
+        start_body = start.json()
+        assert start_body["status"] == "RPA_PROCESSING"
+        assert "job_id" in start_body
+        job_id = start_body["job_id"]
         assert client.get("/api/rpa/queue").json()["count"] == 0
 
         result = client.post(
@@ -248,6 +251,7 @@ class TestRPAEndpoints:
                 "success": True,
                 "accounting_record_id": "ACC-TEST",
                 "message": "Entered as ACC-TEST",
+                "job_id": job_id,
             },
         )
         assert result.status_code == 200
@@ -255,10 +259,96 @@ class TestRPAEndpoints:
         doc = mongo.invoices.find_one({"document_id": document_id})
         assert doc["status"] == "RPA_COMPLETED"
         assert doc["rpa"]["status"] == "COMPLETED"
-        assert doc["rpa"]["job_id"] == f"JOB-{document_id}"
+        assert doc["rpa"]["job_id"] == job_id
         assert doc["rpa"]["accounting_record_id"] == "ACC-TEST"
         assert client.get(f"/api/invoices/{document_id}").json()["rpa"]["accounting_record_id"] == "ACC-TEST"
         assert audit_events(mongo, document_id) == ["APPROVED", "RPA_QUEUED", "RPA_STARTED", "RPA_COMPLETED"]
+
+    def test_second_start_gets_409(self, client, mongo):
+        """Two workers racing to start the same invoice: the second gets 409."""
+        document_id = seed_invoice(mongo)
+        assert approve(client, document_id).json()["status"] == "RPA_QUEUED"
+
+        first = client.post(
+            f"/api/rpa/{document_id}/start",
+            json={"document_id": document_id, "api_key": TEST_RPA_API_KEY},
+        )
+        assert first.status_code == 200
+
+        second = client.post(
+            f"/api/rpa/{document_id}/start",
+            json={"document_id": document_id, "api_key": TEST_RPA_API_KEY},
+        )
+        assert second.status_code == 409
+
+    def test_result_with_wrong_job_id_gets_409(self, client, mongo):
+        """A result carrying the wrong job_id is rejected — prevents one worker clobbering another."""
+        document_id = seed_invoice(mongo)
+        assert approve(client, document_id).json()["status"] == "RPA_QUEUED"
+
+        start = client.post(
+            f"/api/rpa/{document_id}/start",
+            json={"document_id": document_id, "api_key": TEST_RPA_API_KEY},
+        )
+        assert start.status_code == 200
+
+        result = client.post(
+            f"/api/rpa/{document_id}/result",
+            json={
+                "document_id": document_id,
+                "api_key": TEST_RPA_API_KEY,
+                "success": True,
+                "accounting_record_id": "ACC-TEST",
+                "job_id": "wrong-job-id",
+            },
+        )
+        assert result.status_code == 409
+        assert mongo.invoices.find_one({"document_id": document_id})["status"] == "RPA_PROCESSING"
+
+    def test_repeated_result_gets_409(self, client, mongo):
+        """Submitting the result a second time (idempotency protection) is rejected."""
+        document_id = seed_invoice(mongo)
+        assert approve(client, document_id).json()["status"] == "RPA_QUEUED"
+
+        start_body = client.post(
+            f"/api/rpa/{document_id}/start",
+            json={"document_id": document_id, "api_key": TEST_RPA_API_KEY},
+        ).json()
+        job_id = start_body["job_id"]
+
+        result_payload = {
+            "document_id": document_id,
+            "api_key": TEST_RPA_API_KEY,
+            "success": True,
+            "accounting_record_id": "ACC-1",
+            "job_id": job_id,
+        }
+        assert client.post(f"/api/rpa/{document_id}/result", json=result_payload).status_code == 200
+        assert client.post(f"/api/rpa/{document_id}/result", json=result_payload).status_code == 409
+
+    def test_retry_rpa_from_failed_state(self, client, mongo):
+        """A failed RPA job can be re-queued via the retry endpoint."""
+        document_id = seed_invoice(mongo, status=InvoiceStatus.RPA_FAILED)
+
+        response = client.post(
+            f"/api/rpa/{document_id}/retry",
+            json={"document_id": document_id, "api_key": TEST_RPA_API_KEY},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "RPA_QUEUED"
+        assert mongo.invoices.find_one({"document_id": document_id})["status"] == "RPA_QUEUED"
+        assert "RPA_RETRY" in audit_events(mongo, document_id)
+
+    def test_retry_rpa_from_non_failed_state_gets_409(self, client, mongo):
+        """The retry endpoint rejects requests when the invoice is not in RPA_FAILED."""
+        document_id = seed_invoice(mongo)
+        assert approve(client, document_id).json()["status"] == "RPA_QUEUED"
+
+        response = client.post(
+            f"/api/rpa/{document_id}/retry",
+            json={"document_id": document_id, "api_key": TEST_RPA_API_KEY},
+        )
+        assert response.status_code == 409
 
 
 class TestRejectionWorkflow:

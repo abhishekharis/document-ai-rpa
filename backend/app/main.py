@@ -23,7 +23,7 @@ from app.models.audit_log import AuditLog
 from app.schemas.api import (
     UploadResponse, InvoiceResponse, InvoiceListResponse,
     ApprovalRequest, RejectionRequest, RPAQueueResponse,
-    RPAStartRequest, RPAResultRequest, RPAResultResponse,
+    RPAStartRequest, RPAStartResponse, RPAResultRequest, RPAResultResponse,
     HealthResponse, BulkActionRequest, BulkActionResult, BulkActionResponse
 )
 from app.utils.validators import (
@@ -532,6 +532,37 @@ async def reject_invoice(
     return InvoiceResponse(**updated.model_dump())
 
 
+# Reviewer-triggered RPA retry (no API key required — same auth model as approve/reject)
+@app.post("/api/invoices/{document_id}/retry-rpa", response_model=InvoiceResponse)
+async def retry_rpa_invoice(
+    document_id: str,
+    database: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """Re-queue an RPA_FAILED invoice. Accessible from the reviewer UI without an API key."""
+    repo = InvoiceRepository(database)
+    invoice = await repo.get_by_document_id(document_id)
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Invoice not found: {document_id}")
+
+    moved = await repo.retry_rpa(document_id)
+    if not moved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Invoice {document_id} is not in RPA_FAILED state (current: {invoice.status.value})"
+        )
+
+    await repo.create_audit_log(AuditLog(
+        document_id=document_id,
+        event="RPA_RETRY",
+        old_status=InvoiceStatus.RPA_FAILED.value,
+        new_status=InvoiceStatus.RPA_QUEUED.value,
+        message="RPA job re-queued for retry (reviewer action)"
+    ))
+
+    updated = await repo.get_by_document_id(document_id)
+    return InvoiceResponse(**updated.model_dump())
+
+
 # Get RPA Queue
 @app.get("/api/rpa/queue", response_model=RPAQueueResponse)
 async def get_rpa_queue(database: AsyncIOMotorDatabase = Depends(get_database)):
@@ -546,67 +577,37 @@ async def get_rpa_queue(database: AsyncIOMotorDatabase = Depends(get_database)):
 
 
 # Start RPA Processing
-@app.post("/api/rpa/{document_id}/start", response_model=InvoiceResponse, dependencies=[Depends(rpa_limiter)])
+@app.post("/api/rpa/{document_id}/start", response_model=RPAStartResponse, dependencies=[Depends(rpa_limiter)])
 async def start_rpa(
     document_id: str,
     request: RPAStartRequest,
     database: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Start RPA processing for an approved invoice."""
-    # Validate API key
+    """Atomically claim an RPA_QUEUED invoice for processing. Returns 409 if already claimed."""
     if not secrets.compare_digest(request.api_key.encode(), settings.rpa_api_key.encode()):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key"
-        )
-    
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
     repo = InvoiceRepository(database)
+
+    # Confirm the document exists before giving a 409 vs 404
     invoice = await repo.get_by_document_id(document_id)
-    
     if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Invoice not found: {document_id}")
+
+    job_id = await repo.claim_for_rpa(document_id)
+    if job_id is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Invoice not found: {document_id}"
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Invoice {document_id} is not in RPA_QUEUED state (already claimed or wrong status)"
         )
-    
-    # Validate state transition
-    can_transition, error_msg = StateTransitionValidator.validate_transition(
-        invoice.status, InvoiceStatus.RPA_PROCESSING
-    )
-    if not can_transition:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg
-        )
-    
-    # Update status to RPA_PROCESSING
-    success = await repo.update_status(document_id, InvoiceStatus.RPA_PROCESSING, invoice.status)
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to start RPA processing"
-        )
-    
-    # Update RPA status
-    from datetime import datetime
-    await repo.update_rpa_status(document_id, {
-        "eligible": True,
-        "status": "PROCESSING",
-        "job_id": f"JOB-{document_id}",
-        "message": "RPA processing started",
-        "processed_at": datetime.utcnow().isoformat()
-    })
-    
-    # Log RPA start event
+
     await repo.create_audit_log(AuditLog(
         document_id=document_id,
         event="RPA_STARTED",
-        message="RPA processing started"
+        message=f"RPA processing started (job_id={job_id})"
     ))
-    
-    # Get updated invoice
-    updated = await repo.get_by_document_id(document_id)
-    return InvoiceResponse(**updated.model_dump())
+
+    return RPAStartResponse(document_id=document_id, status=InvoiceStatus.RPA_PROCESSING.value, job_id=job_id)
 
 
 # RPA Result Callback
@@ -616,66 +617,78 @@ async def rpa_result(
     request: RPAResultRequest,
     database: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Receive RPA processing result from UiPath."""
-    # Validate API key
+    """Record RPA result. When job_id is provided it must match the invoice's current job_id."""
     if not secrets.compare_digest(request.api_key.encode(), settings.rpa_api_key.encode()):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key"
-        )
-    
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
     repo = InvoiceRepository(database)
     invoice = await repo.get_by_document_id(document_id)
-    
     if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Invoice not found: {document_id}")
+
+    if invoice.status != InvoiceStatus.RPA_PROCESSING:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Invoice not found: {document_id}"
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Invoice {document_id} is not in RPA_PROCESSING state (current: {invoice.status.value})"
         )
-    
-    # Determine new status based on result
-    new_status = InvoiceStatus.RPA_COMPLETED if request.success else InvoiceStatus.RPA_FAILED
-    
-    # Validate state transition
-    can_transition, error_msg = StateTransitionValidator.validate_transition(
-        invoice.status, new_status
+
+    # When a job_id is supplied, verify ownership to prevent one worker clobbering another's job
+    effective_job_id = request.job_id or invoice.rpa.job_id
+    landed = await repo.apply_rpa_result(
+        document_id=document_id,
+        job_id=effective_job_id,
+        success=request.success,
+        accounting_record_id=request.accounting_record_id,
+        message=request.message,
     )
-    if not can_transition:
+    if not landed:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"RPA result rejected: job_id mismatch or invoice was claimed by another worker"
         )
-    
-    # Update status
-    success = await repo.update_status(document_id, new_status, invoice.status)
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to update RPA result"
-        )
-    
-    # Update RPA status
-    from datetime import datetime
-    await repo.update_rpa_status(document_id, {
-        "eligible": True,
-        "status": "COMPLETED" if request.success else "FAILED",
-        "job_id": invoice.rpa.job_id,
-        "accounting_record_id": request.accounting_record_id if request.success else None,
-        "message": request.message or ("RPA completed successfully" if request.success else "RPA failed"),
-        "processed_at": datetime.utcnow().isoformat()
-    })
-    
-    # Log RPA completion event
+
     await repo.create_audit_log(AuditLog(
         document_id=document_id,
         event="RPA_COMPLETED" if request.success else "RPA_FAILED",
         message=request.message or ("RPA completed successfully" if request.success else "RPA failed")
     ))
-    
-    return RPAResultResponse(
-        success=True,
-        message="RPA result recorded successfully"
-    )
+
+    return RPAResultResponse(success=True, message="RPA result recorded successfully")
+
+
+# RPA Retry
+@app.post("/api/rpa/{document_id}/retry", response_model=InvoiceResponse, dependencies=[Depends(rpa_limiter)])
+async def retry_rpa(
+    document_id: str,
+    request: RPAStartRequest,
+    database: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """Re-queue a failed RPA job. Only valid from RPA_FAILED state."""
+    if not secrets.compare_digest(request.api_key.encode(), settings.rpa_api_key.encode()):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
+    repo = InvoiceRepository(database)
+    invoice = await repo.get_by_document_id(document_id)
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Invoice not found: {document_id}")
+
+    moved = await repo.retry_rpa(document_id)
+    if not moved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Invoice {document_id} is not in RPA_FAILED state (current: {invoice.status.value})"
+        )
+
+    await repo.create_audit_log(AuditLog(
+        document_id=document_id,
+        event="RPA_RETRY",
+        old_status=InvoiceStatus.RPA_FAILED.value,
+        new_status=InvoiceStatus.RPA_QUEUED.value,
+        message="RPA job re-queued for retry"
+    ))
+
+    updated = await repo.get_by_document_id(document_id)
+    return InvoiceResponse(**updated.model_dump())
 
 
 if __name__ == "__main__":

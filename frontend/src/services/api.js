@@ -99,6 +99,11 @@ export const rpaAPI = {
     });
     return response.data;
   },
+
+  retryRpa: async (documentId) => {
+    const response = await api.post(`/invoices/${documentId}/retry-rpa`);
+    return response.data;
+  },
 };
 
 export const healthAPI = {

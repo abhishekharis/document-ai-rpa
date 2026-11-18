@@ -99,18 +99,21 @@ class RPAProcessor:
             logger.error(f"Failed to submit to accounting app: {e}")
             return None
     
-    def report_rpa_result(self, document_id: str, success: bool, 
-                         accounting_record_id: Optional[str] = None, 
-                         message: str = "") -> bool:
-        """Report RPA processing result"""
+    def report_rpa_result(self, document_id: str, success: bool,
+                         accounting_record_id: Optional[str] = None,
+                         message: str = "",
+                         job_id: Optional[str] = None) -> bool:
+        """Report RPA processing result, including the job_id for ownership verification."""
         try:
             payload = {
                 "document_id": document_id,
                 "api_key": self.api_key,
                 "success": success,
                 "accounting_record_id": accounting_record_id,
-                "message": message
+                "message": message,
             }
+            if job_id is not None:
+                payload["job_id"] = job_id
             response = self.api_session.post(
                 f"{self.api_base_url}/api/rpa/{document_id}/result",
                 json=payload
@@ -121,40 +124,43 @@ class RPAProcessor:
         except requests.RequestException as e:
             logger.error(f"Failed to report RPA result for {document_id}: {e}")
             return False
-    
+
     def process_invoice(self, document_id: str, invoice_data: Dict[str, Any]) -> bool:
         """Process a single invoice through the complete workflow"""
         logger.info(f"Processing invoice: {document_id}")
-        
-        # Step 1: Start RPA processing
+
+        # Step 1: Atomically claim the invoice for processing
         logger.info(f"Starting RPA processing for {document_id}")
         start_result = self.start_rpa_processing(document_id)
         if not start_result:
-            logger.error(f"Failed to start RPA processing for {document_id}")
-            self.report_rpa_result(document_id, False, message="Failed to start RPA processing")
+            # start failed (network error or already claimed by another worker) — do NOT
+            # report failure because doing so would flip another worker's live job to
+            # RPA_FAILED.  Simply log and skip.
+            logger.error(f"Failed to start RPA processing for {document_id} — skipping (may be claimed)")
             return False
-        
+
+        job_id = start_result.get("job_id")
+
         # Step 2: Submit to accounting app
         logger.info(f"Submitting invoice {document_id} to accounting app")
         accounting_id = self.submit_to_accounting_app(invoice_data)
-        
+
         if accounting_id:
-            # Step 3: Report success
             logger.info(f"Reporting success for {document_id}")
-            success = self.report_rpa_result(
-                document_id, 
-                True, 
+            return self.report_rpa_result(
+                document_id,
+                True,
                 accounting_record_id=accounting_id,
-                message=f"Invoice successfully entered into accounting system. ID: {accounting_id}"
+                message=f"Invoice successfully entered into accounting system. ID: {accounting_id}",
+                job_id=job_id,
             )
-            return success
         else:
-            # Step 3: Report failure
             logger.error(f"Reporting failure for {document_id}")
             self.report_rpa_result(
-                document_id, 
-                False, 
-                message="Failed to submit invoice to accounting application"
+                document_id,
+                False,
+                message="Failed to submit invoice to accounting application",
+                job_id=job_id,
             )
             return False
     

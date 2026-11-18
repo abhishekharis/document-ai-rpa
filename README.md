@@ -402,6 +402,19 @@ pytest tests/ --cov=app --cov-report=term
 
 CI (`.github/workflows/ci.yml`) runs the backend tests and the frontend build on every push to `main` and on pull requests.
 
+### Browser End-to-End Tests (Playwright)
+
+With the Docker stack running on port 8080:
+
+```bash
+cd frontend
+npm ci
+npx playwright install chromium
+npm run e2e
+```
+
+Set `E2E_BASE_URL` to test another address, such as the Vite dev server. The invoice-flow spec uploads a generated invoice and checks that it is processed, completed by the RPA worker, listed on the Accounting page, and that a second copy is flagged as a duplicate. CI runs these after the smoke test.
+
 ### Run E2E Tests
 ```bash
 # Ensure all services are running

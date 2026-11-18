@@ -73,12 +73,19 @@ class RPAStartRequest(BaseModel):
     api_key: str
 
 
+class RPAStartResponse(BaseModel):
+    document_id: str
+    status: str
+    job_id: str
+
+
 class RPAResultRequest(BaseModel):
     document_id: str
     api_key: str
     success: bool
     accounting_record_id: Optional[str] = None
     message: Optional[str] = None
+    job_id: Optional[str] = None
 
 
 class RPAResultResponse(BaseModel):

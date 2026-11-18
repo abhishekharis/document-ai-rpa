@@ -96,8 +96,11 @@ class TestStateTransitions:
         assert "Invalid transition" in error
     
     def test_same_state_transition(self):
+        # Same-state transitions are NOT a no-op shortcut — they go through
+        # the transition table. PROCESSING → PROCESSING is not in the table,
+        # so it must be rejected (finding 1 fix: prevent silent double-claim).
         can_transition, error = StateTransitionValidator.validate_transition(
             InvoiceStatus.PROCESSING, InvoiceStatus.PROCESSING
         )
-        assert can_transition is True  # Same state is allowed
-        assert error == ""
+        assert can_transition is False
+        assert error != ""

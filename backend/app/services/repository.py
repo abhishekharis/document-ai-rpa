@@ -196,6 +196,84 @@ class InvoiceRepository:
             duplicates.append(Invoice(**doc))
         return duplicates
     
+    async def claim_for_rpa(self, document_id: str) -> Optional[str]:
+        """Atomically transition an RPA_QUEUED invoice to RPA_PROCESSING and assign a unique job_id.
+
+        Returns the new job_id on success, or None if the invoice is not in RPA_QUEUED state
+        (i.e. another caller already claimed it).
+        """
+        job_id = str(uuid.uuid4())
+        now = datetime.utcnow()
+        result = await self.collection.find_one_and_update(
+            {"document_id": document_id, "status": InvoiceStatus.RPA_QUEUED.value},
+            {
+                "$set": {
+                    "status": InvoiceStatus.RPA_PROCESSING.value,
+                    "rpa.status": "PROCESSING",
+                    "rpa.job_id": job_id,
+                    "rpa.message": "RPA processing started",
+                    "rpa.processed_at": now.isoformat(),
+                    "updated_at": now,
+                }
+            },
+            return_document=True,
+        )
+        return job_id if result is not None else None
+
+    async def apply_rpa_result(
+        self,
+        document_id: str,
+        job_id: str,
+        success: bool,
+        accounting_record_id: Optional[str],
+        message: Optional[str],
+    ) -> bool:
+        """Apply an RPA result only when the invoice is still in RPA_PROCESSING with the matching job_id.
+
+        Returns True when the update landed, False when the job_id or status no longer match.
+        """
+        new_status = InvoiceStatus.RPA_COMPLETED if success else InvoiceStatus.RPA_FAILED
+        now = datetime.utcnow()
+        result = await self.collection.update_one(
+            {
+                "document_id": document_id,
+                "status": InvoiceStatus.RPA_PROCESSING.value,
+                "rpa.job_id": job_id,
+            },
+            {
+                "$set": {
+                    "status": new_status.value,
+                    "rpa.status": "COMPLETED" if success else "FAILED",
+                    "rpa.accounting_record_id": accounting_record_id if success else None,
+                    "rpa.message": message or ("RPA completed successfully" if success else "RPA failed"),
+                    "rpa.processed_at": now.isoformat(),
+                    "updated_at": now,
+                }
+            },
+        )
+        return result.modified_count > 0
+
+    async def retry_rpa(self, document_id: str) -> bool:
+        """Atomically transition an RPA_FAILED invoice back to RPA_QUEUED for retry.
+
+        Returns True if the transition happened, False if the invoice was not in RPA_FAILED.
+        """
+        now = datetime.utcnow()
+        result = await self.collection.update_one(
+            {"document_id": document_id, "status": InvoiceStatus.RPA_FAILED.value},
+            {
+                "$set": {
+                    "status": InvoiceStatus.RPA_QUEUED.value,
+                    "rpa.status": "QUEUED",
+                    "rpa.job_id": None,
+                    "rpa.message": "Queued for retry",
+                    "rpa.queued_at": now,
+                    "updated_at": now,
+                }
+            },
+        )
+        return result.modified_count > 0
+
     async def queue_for_rpa(self, document_id: str) -> bool:
         """Move an APPROVED invoice to RPA_QUEUED and set its RPA metadata in one conditional update."""
         now = datetime.utcnow()

@@ -61,5 +61,6 @@ def test_worker_enters_manually_approved_invoice_into_accounting(client, mongo):
     doc = mongo.invoices.find_one({"document_id": document_id})
     assert doc["status"] == "RPA_COMPLETED"
     assert record["accounting_id"] in doc["rpa"]["message"]
+    assert doc["rpa"]["job_id"] is not None  # uuid4 assigned on start
     assert audit_events(mongo, document_id) == ["APPROVED", "RPA_QUEUED", "RPA_STARTED", "RPA_COMPLETED"]
     assert processor.get_rpa_queue()["count"] == 0

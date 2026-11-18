@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { CheckCircle2, XCircle, AlertCircle, AlertTriangle, ClipboardCheck, FileText } from 'lucide-react';
-import { useInvoice } from '../hooks/useInvoices';
+import { CheckCircle2, XCircle, AlertCircle, AlertTriangle, ClipboardCheck, FileText, RefreshCw } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useInvoice, invoiceKeys } from '../hooks/useInvoices';
+import { rpaAPI } from '../services/api';
 import PageHeader from '../components/ui/PageHeader';
 import StatusBadge from '../components/ui/StatusBadge';
 import LoadingState from '../components/ui/LoadingState';
@@ -19,6 +22,23 @@ function InvoiceDetails() {
   const { documentId } = useParams();
   const { data: invoice, isLoading: loading, isError } = useInvoice(documentId);
   const error = isError ? 'Failed to load invoice details.' : '';
+  const queryClient = useQueryClient();
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState('');
+
+  const handleRetryRpa = async () => {
+    setRetrying(true);
+    setRetryError('');
+    try {
+      await rpaAPI.retryRpa(documentId);
+      queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(documentId) });
+      queryClient.invalidateQueries({ queryKey: invoiceKeys.all });
+    } catch (err) {
+      setRetryError(err?.response?.data?.detail || 'Failed to retry RPA processing.');
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const getConfidenceColor = (confidence) => {
     if (confidence >= 0.8) return 'text-green-600';
@@ -248,6 +268,21 @@ function InvoiceDetails() {
               <ClipboardCheck className="h-4 w-4" />
               Review & Approve
             </Link>
+          )}
+          {invoice.status === 'RPA_FAILED' && (
+            <div className="space-y-2">
+              {retryError && (
+                <Alert type="error" title={retryError} />
+              )}
+              <button
+                onClick={handleRetryRpa}
+                disabled={retrying}
+                className="btn-primary w-full py-3"
+              >
+                <RefreshCw className={`h-4 w-4 ${retrying ? 'animate-spin' : ''}`} />
+                {retrying ? 'Re-queuing…' : 'Retry RPA Processing'}
+              </button>
+            </div>
           )}
         </div>
       </div>

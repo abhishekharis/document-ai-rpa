@@ -31,10 +31,7 @@ class StateTransitionValidator:
         """
         Validate a state transition and return (is_valid, error_message).
         """
-        if current_status == new_status:
-            return True, ""
-        
         if not cls.can_transition(current_status, new_status):
             return False, f"Invalid transition from {current_status.value} to {new_status.value}"
-        
+
         return True, ""
