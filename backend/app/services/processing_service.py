@@ -1,3 +1,4 @@
+import asyncio
 from typing import Dict, Any
 from app.document_ai.pdf_processor import PDFProcessor
 from app.document_ai.image_preprocessor import ImagePreprocessor
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class ProcessingService:
     """Orchestrate the complete invoice processing pipeline."""
-    
+
     def __init__(self):
         self.pdf_processor = PDFProcessor()
         self.image_preprocessor = ImagePreprocessor()
@@ -22,7 +23,43 @@ class ProcessingService:
         self.validation_service = ValidationService(
             confidence_threshold=settings.confidence_threshold
         )
-    
+
+    def _process_sync(self, file_bytes: bytes, filename: str, document_id: str) -> Dict[str, Any]:
+        """CPU-bound OCR pipeline — runs in a thread to avoid blocking the event loop."""
+        logger.info("Starting processing for document %s", document_id)
+
+        # Step 1: Convert document to images
+        logger.info("Step 1: Converting document to images")
+        images, page_count = self.pdf_processor.process_document(file_bytes, filename)
+
+        # Step 2: Preprocess images
+        logger.info("Step 2: Preprocessing images")
+        preprocessed_images = []
+        for i, image in enumerate(images):
+            preprocessed_images.append(self.image_preprocessor.preprocess(image))
+            logger.info("Preprocessed page %d/%d", i + 1, page_count)
+
+        # Step 3: OCR extraction
+        logger.info("Step 3: Running OCR")
+        ocr_results = self.ocr_service.extract_text_from_images(preprocessed_images)
+
+        # Step 4: Invoice field extraction
+        logger.info("Step 4: Extracting invoice fields")
+        extraction_results = self.invoice_extractor.extract(
+            ocr_results['text'], ocr_results['raw_results']
+        )
+
+        # Step 5: Validation
+        logger.info("Step 5: Validating extracted data")
+        validation_results = self.validation_service.validate(extraction_results['fields'])
+
+        # Step 6: Determine status
+        logger.info("Step 6: Determining invoice status")
+        status = self.validation_service.determine_status(
+            validation_results, extraction_results['overall_confidence']
+        )
+        return extraction_results, ocr_results, page_count, validation_results, status
+
     async def process_invoice(
         self,
         file_bytes: bytes,
@@ -31,62 +68,13 @@ class ProcessingService:
     ) -> Dict[str, Any]:
         """
         Complete processing pipeline for an invoice.
-        
-        Args:
-            file_bytes: Raw file content
-            filename: Original filename
-            document_id: Document ID
-            
-        Returns:
-            Dictionary with processing results including:
-                - status: Final invoice status
-                - vendor: Vendor info
-                - invoice_number: Invoice number
-                - invoice_date: Invoice date
-                - due_date: Due date
-                - currency: Currency
-                - subtotal: Subtotal
-                - tax: Tax
-                - total: Total
-                - extraction: Extraction results
-                - validation: Validation results
+
+        The CPU-intensive OCR steps run in a thread pool so they never block the
+        FastAPI event loop or other async coroutines running in the same process.
         """
-        logger.info(f"Starting processing for document {document_id}")
-        
         try:
-            # Step 1: Convert document to images
-            logger.info("Step 1: Converting document to images")
-            images, page_count = self.pdf_processor.process_document(file_bytes, filename)
-            
-            # Step 2: Preprocess images
-            logger.info("Step 2: Preprocessing images")
-            preprocessed_images = []
-            for i, image in enumerate(images):
-                preprocessed = self.image_preprocessor.preprocess(image)
-                preprocessed_images.append(preprocessed)
-                logger.info(f"Preprocessed page {i + 1}/{page_count}")
-            
-            # Step 3: OCR extraction
-            logger.info("Step 3: Running OCR")
-            ocr_results = self.ocr_service.extract_text_from_images(preprocessed_images)
-            
-            # Step 4: Invoice field extraction
-            logger.info("Step 4: Extracting invoice fields")
-            extraction_results = self.invoice_extractor.extract(
-                ocr_results['text'],
-                ocr_results['raw_results']
-            )
-            
-            # Step 5: Validation
-            logger.info("Step 5: Validating extracted data")
-            validation_results = self.validation_service.validate(extraction_results['fields'])
-            
-            # Step 6: Determine status
-            logger.info("Step 6: Determining invoice status")
-            status = self.validation_service.determine_status(
-                validation_results,
-                extraction_results['overall_confidence']
-            )
+            extraction_results, ocr_results, page_count, validation_results, status = \
+                await asyncio.to_thread(self._process_sync, file_bytes, filename, document_id)
             
             # Build extraction object
             extraction = Extraction(

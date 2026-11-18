@@ -57,6 +57,8 @@ services:
       - storage_data:/data/storage
       - ocr_models:/root/.paddlex
     restart: unless-stopped
+    # Allow an in-flight OCR job (can take up to ~60s) to finish before SIGKILL
+    stop_grace_period: 90s
     depends_on:
       mongodb:
         condition: service_healthy
