@@ -134,6 +134,42 @@ class TestInvoiceUpdate:
         response = client.put("/api/invoices/NONEXISTENT-ID", json=update_data)
         assert response.status_code == 404
 
+    def test_update_allowed_in_needs_review(self, client, mongo):
+        document_id = seed_invoice(mongo, status=InvoiceStatus.NEEDS_REVIEW)
+        response = client.put(
+            f"/api/invoices/{document_id}",
+            json={"invoice_number": "INV-9999"},
+        )
+        assert response.status_code == 200
+        assert response.json()["invoice_number"] == "INV-9999"
+
+    def test_update_blocked_in_approved_state(self, client, mongo):
+        """Editing an APPROVED invoice is forbidden — the approval covered the original fields."""
+        document_id = seed_invoice(mongo, status=InvoiceStatus.APPROVED)
+        response = client.put(
+            f"/api/invoices/{document_id}",
+            json={"total": 9999},
+        )
+        assert response.status_code == 409
+
+    def test_update_blocked_in_rpa_queued_state(self, client, mongo):
+        """Editing an RPA_QUEUED invoice is forbidden — it may be booked at any moment."""
+        document_id = seed_invoice(mongo)
+        assert approve(client, document_id).json()["status"] == "RPA_QUEUED"
+        response = client.put(
+            f"/api/invoices/{document_id}",
+            json={"total": 9999},
+        )
+        assert response.status_code == 409
+
+    def test_update_blocked_in_rpa_completed_state(self, client, mongo):
+        document_id = seed_invoice(mongo, status=InvoiceStatus.RPA_COMPLETED)
+        response = client.put(
+            f"/api/invoices/{document_id}",
+            json={"total": 9999},
+        )
+        assert response.status_code == 409
+
 
 class TestInvoiceApproval:
     def test_approve_invoice_not_found(self, client):

@@ -27,15 +27,29 @@ def duplicate_reason(new: dict, existing: dict) -> Optional[str]:
 
     Both are dicts with vendor_name, invoice_number, invoice_date and total. Matching is
     fuzzy on the vendor (OCR misreads, "Inc." vs "Inc") and normalized on the number.
+
+    When both vendor names are empty we fall back to number+total matching so OCR extraction
+    failures do not silently allow double-booking.
     """
-    if vendor_similarity(new.get("vendor_name"), existing.get("vendor_name")) < VENDOR_SIMILARITY_THRESHOLD:
-        return None
+    new_vendor = normalize_vendor(new.get("vendor_name"))
+    old_vendor = normalize_vendor(existing.get("vendor_name"))
+
     new_number = normalize_invoice_number(new.get("invoice_number"))
     old_number = normalize_invoice_number(existing.get("invoice_number"))
-    if new_number and new_number == old_number:
-        return "same vendor and invoice number"
     same_total = new.get("total") is not None and new.get("total") == existing.get("total")
     same_date = bool(new.get("invoice_date")) and new.get("invoice_date") == existing.get("invoice_date")
-    if same_total and same_date:
-        return "same vendor, date and total"
+
+    if new_vendor and old_vendor:
+        # Both vendors are known — require vendor similarity
+        if vendor_similarity(new.get("vendor_name"), existing.get("vendor_name")) < VENDOR_SIMILARITY_THRESHOLD:
+            return None
+        if new_number and new_number == old_number:
+            return "same vendor and invoice number"
+        if same_total and same_date:
+            return "same vendor, date and total"
+    else:
+        # At least one vendor is unknown — fall back to number+total
+        if new_number and new_number == old_number and same_total:
+            return "same invoice number and total (vendor unknown)"
+
     return None

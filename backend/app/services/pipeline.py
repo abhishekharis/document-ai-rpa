@@ -26,13 +26,17 @@ async def queue_approved_invoice(repo: InvoiceRepository, document_id: str) -> b
 
 async def find_duplicate(repo: InvoiceRepository, document_id: str, processing_result: dict):
     """Return (document_id, reason) of an earlier invoice this one duplicates, or None."""
+    invoice = await repo.get_by_document_id(document_id)
+    created_at = invoice.created_at if invoice else None
     new = {
         "vendor_name": processing_result["vendor"].get("name"),
         "invoice_number": processing_result["invoice_number"],
         "invoice_date": processing_result["invoice_date"],
         "total": processing_result["total"],
     }
-    for candidate in await repo.find_duplicate_candidates(document_id, new["invoice_number"], new["total"]):
+    for candidate in await repo.find_duplicate_candidates(
+        document_id, new["invoice_number"], new["total"], created_at=created_at
+    ):
         existing = {
             "vendor_name": candidate.get("vendor", {}).get("name"),
             "invoice_number": candidate.get("invoice_number"),
@@ -45,39 +49,75 @@ async def find_duplicate(repo: InvoiceRepository, document_id: str, processing_r
     return None
 
 
+async def check_duplicate_after_edit(repo: InvoiceRepository, document_id: str) -> None:
+    """Re-run the duplicate check after a manual edit and update the invoice's validation accordingly."""
+    invoice = await repo.get_by_document_id(document_id)
+    if not invoice:
+        return
+    fields = {
+        "vendor_name": invoice.vendor.name if invoice.vendor else None,
+        "invoice_number": invoice.invoice_number,
+        "invoice_date": invoice.invoice_date,
+        "total": invoice.total,
+    }
+    candidates = await repo.find_duplicate_candidates(
+        document_id, fields["invoice_number"], fields["total"], created_at=invoice.created_at
+    )
+    duplicate = None
+    for candidate in candidates:
+        existing = {
+            "vendor_name": candidate.get("vendor", {}).get("name"),
+            "invoice_number": candidate.get("invoice_number"),
+            "invoice_date": candidate.get("invoice_date"),
+            "total": candidate.get("total"),
+        }
+        reason = duplicate_reason(fields, existing)
+        if reason:
+            duplicate = (candidate["document_id"], reason)
+            break
+
+    validation = invoice.validation.model_dump() if invoice.validation else {"is_valid": True, "errors": [], "warnings": []}
+    # Clear any previous duplicate warnings
+    validation["warnings"] = [w for w in validation.get("warnings", []) if "duplicate" not in w.lower()]
+
+    if duplicate:
+        original_id, reason = duplicate
+        validation["warnings"].append(f"Possible duplicate of {original_id} ({reason})")
+        validation["duplicate_of"] = original_id
+        await repo.create_audit_log(AuditLog(
+            document_id=document_id,
+            event="DUPLICATE_DETECTED",
+            message=f"Possible duplicate of {original_id} ({reason}) (re-checked after edit)"
+        ))
+    else:
+        validation["duplicate_of"] = None
+
+    await repo.update_validation(document_id, validation)
+
+
 async def run_processing(
     repo: InvoiceRepository,
     processing_service: ProcessingService,
     document_id: str,
     content: bytes,
-    filename: str
+    filename: str,
+    processing_token: Optional[str] = None,
 ) -> InvoiceStatus:
-    """Run the processing pipeline for an invoice in PROCESSING status and return its resulting status."""
+    """Run the OCR pipeline for a claimed PROCESSING invoice and return the resulting status.
+
+    When processing_token is supplied, every write is conditional on the token still being
+    held — a late finisher with a stale token is a no-op and returns the current status.
+    """
     try:
         processing_result = await processing_service.process_invoice(
             content,
             filename,
             document_id
         )
-        
-        # Update invoice with processing results
-        await repo.update(document_id, InvoiceUpdate(
-            vendor=Vendor(**processing_result['vendor']),
-            invoice_number=processing_result['invoice_number'],
-            invoice_date=processing_result['invoice_date'],
-            due_date=processing_result['due_date'],
-            currency=processing_result['currency'],
-            subtotal=processing_result['subtotal'],
-            tax=processing_result['tax'],
-            total=processing_result['total'],
-            line_items=[]
-        ))
-        
-        # Update extraction results
-        await repo.update_extraction(document_id, processing_result['extraction'])
-        
-        # Flag likely duplicates so they are reviewed instead of auto-approved
+
         final_status = InvoiceStatus(processing_result['status'])
+
+        # Check for duplicates before the guarded write so the flag is part of it
         duplicate = await find_duplicate(repo, document_id, processing_result)
         if duplicate:
             original_id, reason = duplicate

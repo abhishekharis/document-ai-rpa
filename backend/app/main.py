@@ -14,7 +14,7 @@ from app.logging_config import configure_logging
 from app.database import db, get_database
 from app.services.repository import InvoiceRepository
 from app.services.processing_service import ProcessingService
-from app.services.pipeline import run_processing, queue_approved_invoice
+from app.services.pipeline import run_processing, queue_approved_invoice, check_duplicate_after_edit
 from app.services.events import invoice_event_stream
 from app.services.job_queue import JobQueue, create_job_queue
 from app.storage.file_storage import file_storage
@@ -391,36 +391,38 @@ async def get_document(document_id: str):
     return FileResponse(file_path)
 
 
+# Statuses where a manual field edit is permitted
+EDITABLE_STATUSES = {InvoiceStatus.NEEDS_REVIEW, InvoiceStatus.PROCESSED}
+
+
 # Update Invoice
 @app.put("/api/invoices/{document_id}", response_model=InvoiceResponse)
 async def update_invoice(
     document_id: str,
-    update_data: dict,
+    update_data: InvoiceUpdate,
     database: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Update invoice fields (for manual correction)."""
+    """Update invoice fields (for manual correction). Only allowed in NEEDS_REVIEW or PROCESSED."""
     repo = InvoiceRepository(database)
-    
-    # Check if invoice exists
+
     invoice = await repo.get_by_document_id(document_id)
     if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Invoice not found: {document_id}")
+
+    if invoice.status not in EDITABLE_STATUSES:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Invoice not found: {document_id}"
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Invoice {document_id} cannot be edited in status {invoice.status.value}; "
+                   f"only {', '.join(s.value for s in EDITABLE_STATUSES)} are editable"
         )
-    
-    # Update invoice
-    from app.models.invoice import InvoiceUpdate
-    update_obj = InvoiceUpdate(**update_data)
-    updated = await repo.update(document_id, update_obj)
-    
+
+    updated = await repo.update(document_id, update_data)
     if not updated:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to update invoice"
-        )
-    
-    # Log correction event
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to update invoice")
+
+    # Re-check for duplicates now that fields may have changed
+    await check_duplicate_after_edit(repo, document_id)
+
     await repo.create_audit_log(AuditLog(
         document_id=document_id,
         event="MANUAL_CORRECTION",

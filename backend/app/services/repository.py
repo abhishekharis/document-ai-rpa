@@ -71,8 +71,15 @@ class InvoiceRepository:
         ).sort("updated_at", 1)
         return [doc async for doc in cursor]
     
-    async def find_duplicate_candidates(self, document_id: str, invoice_number: str, total: Optional[float]) -> List[dict]:
-        """Other invoices sharing a similar invoice number or the same total (candidates for duplicate checks)."""
+    async def find_duplicate_candidates(
+        self, document_id: str, invoice_number: str, total: Optional[float], created_at: Optional[datetime] = None
+    ) -> List[dict]:
+        """Other invoices sharing a similar invoice number or the same total.
+
+        Only returns invoices created strictly before `created_at` (the current invoice's
+        creation time) so that two invoices uploaded simultaneously can never flag each other
+        as duplicates — the earlier one is the original.
+        """
         number_pattern = r"^\s*" + r"[^A-Za-z0-9]*".join(re.escape(c) for c in re.sub(r"[^A-Za-z0-9]", "", invoice_number or "")) + r"\s*$"
         clauses = []
         if invoice_number and re.sub(r"[^A-Za-z0-9]", "", invoice_number):
@@ -81,12 +88,15 @@ class InvoiceRepository:
             clauses.append({"total": total})
         if not clauses:
             return []
+        query: dict = {
+            "document_id": {"$ne": document_id},
+            "status": {"$nin": [InvoiceStatus.ERROR.value, InvoiceStatus.REJECTED.value]},
+            "$or": clauses,
+        }
+        if created_at is not None:
+            query["created_at"] = {"$lt": created_at}
         cursor = self.collection.find(
-            {
-                "document_id": {"$ne": document_id},
-                "status": {"$nin": [InvoiceStatus.ERROR.value, InvoiceStatus.REJECTED.value]},
-                "$or": clauses,
-            },
+            query,
             {"_id": 0, "document_id": 1, "vendor": 1, "invoice_number": 1, "invoice_date": 1, "total": 1, "created_at": 1},
         ).sort("created_at", 1).limit(200)
         return [doc async for doc in cursor]

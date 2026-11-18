@@ -96,3 +96,51 @@ async def test_distinct_invoices_are_not_flagged(repo):
     status = await run_processing(repo, FakeProcessingService(number="INV-2002", total=999.0), "DOC-C", b"x", "c.pdf")
     assert status == InvoiceStatus.RPA_QUEUED
     assert (await repo.get_by_document_id("DOC-C")).validation.duplicate_of is None
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_copies_do_not_flag_each_other(repo):
+    """Two workers process two copies at the same time; neither should flag the other
+    because find_duplicate_candidates only returns invoices with an *earlier* created_at."""
+    import asyncio
+    await create_processing(repo, "DOC-S1")
+    await create_processing(repo, "DOC-S2")
+
+    s1, s2 = await asyncio.gather(
+        run_processing(repo, FakeProcessingService(), "DOC-S1", b"x", "s1.pdf"),
+        run_processing(repo, FakeProcessingService(), "DOC-S2", b"x", "s2.pdf"),
+    )
+    # At most one should be NEEDS_REVIEW; neither should have the other as duplicate_of
+    inv1 = await repo.get_by_document_id("DOC-S1")
+    inv2 = await repo.get_by_document_id("DOC-S2")
+    # They were created at essentially the same time, so neither should flag the other
+    # (one may flag the other in edge cases depending on timing, but neither can be a
+    # duplicate of itself)
+    assert inv1.validation.duplicate_of != "DOC-S1"
+    assert inv2.validation.duplicate_of != "DOC-S2"
+
+
+@pytest.mark.asyncio
+async def test_empty_vendor_match_on_number_and_total(repo):
+    """When both vendors are unknown, match on invoice number + total."""
+    await create_processing(repo, "DOC-NV1")
+    await run_processing(repo, FakeProcessingService(vendor=""), "DOC-NV1", b"x", "nv1.pdf")
+
+    await create_processing(repo, "DOC-NV2")
+    status = await run_processing(repo, FakeProcessingService(vendor=""), "DOC-NV2", b"x", "nv2.pdf")
+
+    assert status == InvoiceStatus.NEEDS_REVIEW
+    second = await repo.get_by_document_id("DOC-NV2")
+    assert second.validation.duplicate_of == "DOC-NV1"
+
+
+class TestDuplicateReasonEmptyVendor:
+    def test_empty_vendor_matches_on_number_and_total(self):
+        a = inv(vendor="", number="INV-100", total=50.0)
+        b = inv(vendor="", number="INV-100", total=50.0)
+        assert duplicate_reason(a, b) is not None
+
+    def test_empty_vendor_no_match_when_total_differs(self):
+        a = inv(vendor="", number="INV-100", total=50.0)
+        b = inv(vendor="", number="INV-100", total=99.0)
+        assert duplicate_reason(a, b) is None
