@@ -41,6 +41,9 @@ upload_limiter = RateLimiter(settings.upload_rate_limit_per_minute, 60)
 rpa_limiter = RateLimiter(settings.rpa_rate_limit_per_minute, 60)
 
 
+SSE_MAX_CONNECTIONS = 200
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -49,10 +52,13 @@ async def lifespan(app: FastAPI):
     repo = InvoiceRepository(database)
     await repo.create_indexes()
     app.state.job_queue = create_job_queue()
+    app.state.shutting_down = False
+    app.state.sse_connections = 0
     logger.info("Application startup complete (environment=%s, background_ocr=%s)",
                 settings.environment, app.state.job_queue is not None)
     yield
-    # Shutdown
+    # Signal SSE streams to stop before closing DB
+    app.state.shutting_down = True
     if app.state.job_queue:
         await app.state.job_queue.close()
     db.close()
@@ -211,8 +217,26 @@ async def process_or_enqueue(
 @app.get("/api/events")
 async def invoice_events(request: Request, database: AsyncIOMotorDatabase = Depends(get_database)):
     """Stream an `invoice` event ({document_id, status}) each time an invoice changes."""
+    if request.app.state.sse_connections >= SSE_MAX_CONNECTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Too many SSE connections; try again later"
+        )
+
+    async def tracked_stream():
+        request.app.state.sse_connections += 1
+        try:
+            async for chunk in invoice_event_stream(
+                InvoiceRepository(database),
+                request.is_disconnected,
+                shutting_down=request.app.state.shutting_down,
+            ):
+                yield chunk
+        finally:
+            request.app.state.sse_connections -= 1
+
     return StreamingResponse(
-        invoice_event_stream(InvoiceRepository(database), request.is_disconnected),
+        tracked_stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

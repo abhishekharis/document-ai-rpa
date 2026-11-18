@@ -19,6 +19,7 @@ class InvoiceRepository:
         await self.collection.create_index([("vendor.name", 1), ("invoice_number", 1)])
         await self.collection.create_index("status")
         await self.collection.create_index("created_at")
+        await self.collection.create_index("updated_at")
         await self.audit_collection.create_index("document_id")
         await self.audit_collection.create_index("timestamp")
     

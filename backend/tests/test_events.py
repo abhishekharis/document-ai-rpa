@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.config import settings
 from app.models.invoice import Invoice, InvoiceStatus, Vendor, Extraction
-from app.services.events import invoice_event_stream, sse_message
+from app.services.events import invoice_event_stream, sse_message, SSE_OVERLAP_SECONDS
 from app.services.repository import InvoiceRepository
 
 
@@ -67,3 +67,40 @@ async def test_stream_sends_heartbeat_when_idle(repo):
 
     messages = [m async for m in invoice_event_stream(repo, is_disconnected, poll_interval=0.01, heartbeat_every=0.02)]
     assert ": keep-alive\n\n" in messages
+
+
+@pytest.mark.asyncio
+async def test_stream_deduplicates_within_overlap_window(repo):
+    """An invoice that appears in two consecutive polls (due to overlap) is only emitted once."""
+    inv = make_invoice("DOC-ONCE")
+    await repo.create(inv)
+    polls = 0
+
+    async def is_disconnected():
+        nonlocal polls
+        polls += 1
+        return polls > 3
+
+    messages = [m async for m in invoice_event_stream(repo, is_disconnected, poll_interval=0.01)]
+    events = [m for m in messages if m.startswith("event:")]
+    # Only one event for this invoice despite overlap queries repeating it
+    doc_events = [e for e in events if "DOC-ONCE" in e]
+    assert len(doc_events) == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_stops_when_shutting_down(repo):
+    """shutting_down=True causes the stream to exit immediately (after the initial connected notice)."""
+    async def is_disconnected():
+        return False  # never disconnects — only shutdown exits
+
+    messages = []
+    async for chunk in invoice_event_stream(repo, is_disconnected, poll_interval=0.01, shutting_down=True):
+        messages.append(chunk)
+        # Safety: bail if somehow we get more than a few messages
+        if len(messages) > 5:
+            break
+
+    assert messages[0] == ": connected\n\n"
+    # The loop condition checks shutting_down before polling; at most the connected notice arrives
+    assert len(messages) == 1
